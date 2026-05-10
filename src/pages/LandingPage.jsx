@@ -282,7 +282,7 @@ const makeStyles = (mob) => ({
   },
   featureItem: {
     display: 'flex', alignItems: 'center', gap: 5,
-    color: C.textMuted,   // ✅ dark text on light bg
+    color: C.textMuted,
     fontSize: mob ? 11 : 12,
   },
   featureDot: {
@@ -299,7 +299,7 @@ const makeStyles = (mob) => ({
   },
   trustItem: {
     display: 'flex', alignItems: 'center', gap: 4,
-    color: C.textLight,   // ✅ subtle on light bg
+    color: C.textLight,
     fontSize: mob ? 10 : 11,
   },
 });
@@ -367,7 +367,7 @@ export default function LandingPage() {
   const [role, setRole] = useState('superadmin');
   const [form, setForm] = useState({
     clinicName: '', ownerName: '', email: '',
-    phone: '', city: '', password: '',
+    phone: '', whatsapp: '', address: '', city: '', district: '', state: '', password: '',
   });
   const [err, setErr] = useState('');
 
@@ -388,11 +388,15 @@ export default function LandingPage() {
     }
     const clinic = {
       id: genId(),
-      name:  form.clinicName,
-      owner: form.ownerName,
-      email: form.email,
-      phone: form.phone,
-      city:  form.city,
+      name:     form.clinicName,
+      owner:    form.ownerName,
+      email:    form.email,
+      phone:    form.phone,
+      whatsapp: form.whatsapp,
+      address:  form.address,
+      city:     form.city,
+      district: form.district,
+      state:    form.state,
       password: form.password,
       doctors: [], receptionists: [], patients: [],
       createdAt: today(),
@@ -471,7 +475,7 @@ export default function LandingPage() {
         button, select, input { -webkit-tap-highlight-color: transparent; }
       `}</style>
 
-      {/* Decorative orbs — subtle on light background */}
+      {/* Decorative orbs */}
       {!mob && (
         <>
           <div style={{
@@ -495,7 +499,7 @@ export default function LandingPage() {
         </>
       )}
 
-      {/* Subtle grid pattern for light bg */}
+      {/* Subtle grid pattern */}
       <div style={{
         position:'fixed', inset:0,
         backgroundImage:'linear-gradient(rgba(10,61,98,0.04) 1px,transparent 1px),linear-gradient(90deg,rgba(10,61,98,0.04) 1px,transparent 1px)',
@@ -569,10 +573,12 @@ export default function LandingPage() {
               <div style={S.secTitle}>Register Clinic</div>
             </div>
 
+            {/* Clinic Name */}
             <FieldInput S={S} label="Clinic Name"
               value={form.clinicName} onChange={(e) => f('clinicName', e.target.value)}
               placeholder="e.g. City Medical Centre" />
 
+            {/* Owner Name */}
             <FieldInput S={S} label="Owner / Admin Name"
               value={form.ownerName} onChange={(e) => f('ownerName', e.target.value)}
               placeholder="Full name" />
@@ -587,11 +593,51 @@ export default function LandingPage() {
                 placeholder="03xx-xxxxxxx" />
             </div>
 
-            {/* City + Password — 2 col desktop, 1 col mobile */}
+            {/* WhatsApp — full width with icon hint */}
+            <div style={S.field}>
+              <label style={S.fieldLabel}>WhatsApp Number</label>
+              <div style={{ position: 'relative' }}>
+                <span style={{
+                  position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
+                  fontSize: 16, lineHeight: 1, pointerEvents: 'none', userSelect: 'none',
+                }}>💬</span>
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  value={form.whatsapp}
+                  onChange={(e) => f('whatsapp', e.target.value)}
+                  placeholder="03xx-xxxxxxx (for patient communication)"
+                  autoComplete="off"
+                  style={{
+                    ...S.fieldInput,
+                    paddingLeft: 36,
+                  }}
+                  onFocus={(e) => { e.target.style.borderColor = '#1565a8'; e.target.style.boxShadow = '0 0 0 3px rgba(21,101,168,0.1)'; }}
+                  onBlur={(e)  => { e.target.style.borderColor = '#d0dce8'; e.target.style.boxShadow = 'none'; }}
+                />
+              </div>
+            </div>
+
+            {/* Address — full width */}
+            <FieldInput S={S} label="Address"
+              value={form.address} onChange={(e) => f('address', e.target.value)}
+              placeholder="Street / Area / Sector" />
+
+            {/* City + District — 2 col desktop, 1 col mobile */}
             <div style={S.fieldRow}>
               <FieldInput S={S} label="City"
                 value={form.city} onChange={(e) => f('city', e.target.value)}
-                placeholder="Lahore" />
+                placeholder="e.g. Lahore" />
+              <FieldInput S={S} label="District"
+                value={form.district} onChange={(e) => f('district', e.target.value)}
+                placeholder="e.g. Gulberg" />
+            </div>
+
+            {/* State + Password — 2 col desktop, 1 col mobile */}
+            <div style={S.fieldRow}>
+              <FieldInput S={S} label="State / Province"
+                value={form.state} onChange={(e) => f('state', e.target.value)}
+                placeholder="e.g. Punjab" />
               <FieldInput S={S} label="Password" type="password"
                 value={form.password} onChange={(e) => f('password', e.target.value)}
                 placeholder="Min. 6 characters" />
