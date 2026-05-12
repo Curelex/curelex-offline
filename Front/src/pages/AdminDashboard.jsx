@@ -1051,19 +1051,37 @@ function ReceptionistManagement({ receptionists, onAdd, onDelete }) {
 }
 
 /* ── All Patients ─────────────────────────────────────────────── */
+
 export function AllPatients({ patients }) {
-  const [search,     setSearch]     = useState('');
+  const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('today');
+
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const filtered = patients.filter((p) => {
-    const matchDate   = dateFilter === 'all' || p.date === todayStr;
-    const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.token).includes(search);
-    return matchDate && matchSearch;
-  }).sort((a, b) => {
-    if (a.date !== b.date) return b.date.localeCompare(a.date);
-    return a.token - b.token;
-  });
+  // 🔍 Filter patients
+  const filtered = patients
+    .filter((p) => {
+      const matchDate =
+        dateFilter === 'all' || p.date === todayStr;
+
+      const matchSearch =
+        !search ||
+        p.name.toLowerCase().includes(search.toLowerCase()) ||
+        String(p.token).includes(search);
+
+      return matchDate && matchSearch;
+    })
+    .sort((a, b) => {
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return new Date(b.createdAt) - new Date(a.createdAt); 
+    });
+
+  // 👨‍⚕️ Group by doctor
+  const grouped = filtered.reduce((acc, p) => {
+    if (!acc[p.doctorName]) acc[p.doctorName] = [];
+    acc[p.doctorName].push(p);
+    return acc;
+  }, {});
 
   return (
     <div>
@@ -1071,48 +1089,239 @@ export function AllPatients({ patients }) {
         title="All Patients"
         subtitle={`${patients.length} total patients`}
         action={
-          <div style={{ display:'flex', gap:10 }}>
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or token..." style={{ width:200 }} />
-            <Select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} style={{ width:130 }}>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name or token..."
+              style={{ width: 200 }}
+            />
+            <Select
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              style={{ width: 130 }}
+            >
               <option value="today">Today</option>
               <option value="all">All Time</option>
             </Select>
           </div>
         }
       />
-      <Card noPad>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-            <thead>
-              <tr style={{ background:'var(--surface2)' }}>
-                {['Token','Name','Age','Phone','Doctor','Symptoms','Paid Rs.','Dues Rs.','Payment','Date','Time','Status'].map((h) => (
-                  <th key={h} style={{ padding:'12px 14px',textAlign:'left',fontWeight:600,color:'var(--text-muted)',whiteSpace:'nowrap',borderBottom:'1px solid var(--border)' }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr><td colSpan={12} style={{ padding:'3rem',textAlign:'center',color:'var(--text-muted)' }}>No patients found</td></tr>
-              ) : filtered.map((p) => (
-                <tr key={p._id} style={{ borderBottom:'1px solid var(--border)' }}>
-                  <td style={{ padding:'10px 14px' }}><TokenBadge token={p.token} size="sm" status={p.status} /></td>
-                  <td style={{ padding:'10px 14px',fontWeight:500 }}>{p.name}</td>
-                  <td style={{ padding:'10px 14px',color:'var(--text-muted)' }}>{p.age||'-'}</td>
-                  <td style={{ padding:'10px 14px',color:'var(--text-muted)' }}>{p.phone||'-'}</td>
-                  <td style={{ padding:'10px 14px',color:'var(--text-muted)' }}>{p.doctorName}</td>
-                  <td style={{ padding:'10px 14px',color:'var(--text-muted)',maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{p.symptoms}</td>
-                  <td style={{ padding:'10px 14px',color:'var(--success)',fontWeight:500 }}>{p.paid||0}</td>
-                  <td style={{ padding:'10px 14px',color:p.dues>0?'var(--danger)':'var(--text-muted)',fontWeight:p.dues>0?600:400 }}>{p.dues||0}</td>
-                  <td style={{ padding:'10px 14px' }}><PaymentBadge method={p.paymentMethod} /></td>
-                  <td style={{ padding:'10px 14px',color:'var(--text-muted)',whiteSpace:'nowrap' }}>{p.date}</td>
-                  <td style={{ padding:'10px 14px',color:'var(--text-muted)',whiteSpace:'nowrap' }}>{p.time}</td>
-                  <td style={{ padding:'10px 14px' }}><Badge color={p.status==='called'?'green':p.status==='done'?'gray':'blue'}>{p.status}</Badge></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+
+      {Object.keys(grouped).length === 0 ? (
+        <Card>
+          <div
+            style={{
+              padding: '3rem',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+            }}
+          >
+            No patients found
+          </div>
+        </Card>
+      ) : (
+        Object.entries(grouped).map(([doctorName, pats]) => {
+          const sortedPatients = pats.sort(
+            (a, b) =>
+              new Date(b.createdAt) - new Date(a.createdAt)
+          );
+
+          return (
+            <div key={doctorName} style={{ marginBottom: 24 }}>
+              
+              {/* 👨‍⚕️ Doctor Header */}
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  marginBottom: 12,
+                  padding: '10px 16px',
+                  background: 'var(--primary-light)',
+                  borderRadius: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <span style={{ fontSize: 18 }}>👨‍⚕️</span>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>
+                  {doctorName}
+                </span>
+                <Badge color="blue">
+                  {sortedPatients.length} patients
+                </Badge>
+              </div>
+
+              {/* 📋 Table */}
+              <Card noPad>
+                <div style={{ overflowX: 'auto' }}>
+                  <table
+                    style={{
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      fontSize: 13,
+                    }}
+                  >
+                    <thead>
+                      <tr style={{ background: 'var(--surface2)' }}>
+                        {[
+                          'Token',
+                          'Name',
+                          'Age',
+                          'Phone',
+                          'Symptoms',
+                          'Paid Rs.',
+                          'Dues Rs.',
+                          'Payment',
+                          'Date',
+                          'Time',
+                          'Status',
+                        ].map((h) => (
+                          <th
+                            key={h}
+                            style={{
+                              padding: '12px 14px',
+                              textAlign: 'left',
+                              fontWeight: 600,
+                              color: 'var(--text-muted)',
+                              whiteSpace: 'nowrap',
+                              borderBottom:
+                                '1px solid var(--border)',
+                            }}
+                          >
+                            {h}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {sortedPatients.map((p) => (
+                        <tr
+                          key={p._id}
+                          style={{
+                            borderBottom:
+                              '1px solid var(--border)',
+                          }}
+                        >
+                          <td style={{ padding: '10px 14px' }}>
+                            <TokenBadge
+                              token={p.token}
+                              size="sm"
+                              status={p.status}
+                            />
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              fontWeight: 500,
+                            }}
+                          >
+                            {p.name}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            {p.age || '-'}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            {p.phone || '-'}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              color: 'var(--text-muted)',
+                              maxWidth: 130,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {p.symptoms}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              color: 'var(--success)',
+                              fontWeight: 500,
+                            }}
+                          >
+                            {p.paid || 0}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              color:
+                                p.dues > 0
+                                  ? 'var(--danger)'
+                                  : 'var(--text-muted)',
+                              fontWeight: p.dues > 0 ? 600 : 400,
+                            }}
+                          >
+                            {p.dues || 0}
+                          </td>
+
+                          <td style={{ padding: '10px 14px' }}>
+                            <PaymentBadge
+                              method={p.paymentMethod}
+                            />
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            {p.date}
+                          </td>
+
+                          <td
+                            style={{
+                              padding: '10px 14px',
+                              color: 'var(--text-muted)',
+                            }}
+                          >
+                            {p.time}
+                          </td>
+
+                          <td style={{ padding: '10px 14px' }}>
+                            <Badge
+                              color={
+                                p.status === 'called'
+                                  ? 'green'
+                                  : p.status === 'done'
+                                  ? 'gray'
+                                  : 'blue'
+                              }
+                            >
+                              {p.status}
+                            </Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Card>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

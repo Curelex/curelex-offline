@@ -22,7 +22,7 @@ router.get('/', auth, async (req, res) => {
 
     if (req.query.date === 'today') query.date = todayStr();
 
-    let patients = await Patient.find(query).sort({ date: -1, token: 1 });
+    let patients = await Patient.find(query).sort({ date: -1, token: -1 });
 
     if (req.query.search) {
       const s = req.query.search.toLowerCase();

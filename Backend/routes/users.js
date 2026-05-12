@@ -25,7 +25,7 @@ router.get('/', auth, async (req, res) => {
     if (!allowedRoles.includes(req.user.role))
       return res.status(403).json({ message: 'Not allowed.' });
 
-    const users = await User.find({ clinicId: req.user.clinicId }).select('-password');
+    const users = await User.find({ clinicId: req.user.clinicId }).sort({ createdAt: -1 }).select('-password');
     res.json(users);
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -35,7 +35,7 @@ router.get('/', auth, async (req, res) => {
 // ── GET /api/users/me  — fetch own user record (doctor/receptionist) ──
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findOne({ _id: req.user.id, clinicId: req.user.clinicId }).select('-password');
+    const user = await User.findOne({ _id: req.user.id, clinicId: req.user.clinicId }).sort({ createdAt: -1 }).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found.' });
     res.json(user);
   } catch (err) {

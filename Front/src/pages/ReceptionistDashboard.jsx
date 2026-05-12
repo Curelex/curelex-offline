@@ -321,7 +321,7 @@ const STATUS_ORDER = { waiting: 0, called: 1, done: 2 };
 function sortQueue(patients) {
   return [...patients].sort((a, b) => {
     const d = STATUS_ORDER[a.status] - STATUS_ORDER[b.status];
-    return d !== 0 ? d : a.token - b.token;
+    return d !== 0 ? d : b.token - a.token;
   });
 }
 
