@@ -14,9 +14,10 @@ const PatientSchema = new mongoose.Schema({
   symptoms: { type: String, required: true },
   notes:    { type: String, default: '' },
 
-  totalFee: { type: Number, default: 0 },
-  paid:     { type: Number, default: 0 },
-  dues:     { type: Number, default: 0 },
+  totalFee:      { type: Number, default: 0 },
+  paid:          { type: Number, default: 0 },
+  dues:          { type: Number, default: 0 },
+  paymentMethod: { type: String, enum: ['cash', 'upi'], default: 'cash' },
 
   date:   { type: String, required: true },  // "YYYY-MM-DD"
   time:   { type: String, required: true },  // "HH:MM AM/PM"

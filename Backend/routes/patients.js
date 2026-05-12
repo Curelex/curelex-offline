@@ -43,7 +43,10 @@ router.post('/', auth, async (req, res) => {
     if (!allowed.includes(req.user.role))
       return res.status(403).json({ message: 'Not allowed.' });
 
-    const { name, age, phone, whatsapp, gender, symptoms, notes, doctorId, totalFee, paid } = req.body;
+    const {
+      name, age, phone, whatsapp, gender, symptoms, notes,
+      doctorId, totalFee, paid, paymentMethod,
+    } = req.body;
 
     if (!name || !doctorId || !symptoms)
       return res.status(400).json({ message: 'Name, doctor, and symptoms are required.' });
@@ -69,23 +72,24 @@ router.post('/', auth, async (req, res) => {
     const dues = Math.max(0, (parseFloat(totalFee) || 0) - (parseFloat(paid) || 0));
 
     const patient = await Patient.create({
-      clinicId:   req.user.clinicId,
+      clinicId:      req.user.clinicId,
       doctorId,
-      doctorName: doctor.name,
-      token:      count + 1,
-      name:       name.trim(),
-      age:        age       || '',
-      phone:      phone     || '',
-      whatsapp:   whatsapp  || '',
-      gender:     gender    || 'male',
-      symptoms:   symptoms.trim(),
-      notes:      notes     || '',
-      totalFee:   parseFloat(totalFee) || 0,
-      paid:       parseFloat(paid)     || 0,
+      doctorName:    doctor.name,
+      token:         count + 1,
+      name:          name.trim(),
+      age:           age       || '',
+      phone:         phone     || '',
+      whatsapp:      whatsapp  || '',
+      gender:        gender    || 'male',
+      symptoms:      symptoms.trim(),
+      notes:         notes     || '',
+      totalFee:      parseFloat(totalFee) || 0,
+      paid:          parseFloat(paid)     || 0,
       dues,
-      date:       todayStr(),
-      time:       currentTime(),
-      status:     'waiting',
+      paymentMethod: paymentMethod === 'upi' ? 'upi' : 'cash',
+      date:          todayStr(),
+      time:          currentTime(),
+      status:        'waiting',
     });
 
     res.status(201).json(patient);

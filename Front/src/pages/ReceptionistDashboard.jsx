@@ -28,6 +28,22 @@ function followUpBadgeStyle(days) {
   return              { bg: 'rgba(0,184,148,0.08)',  border: 'rgba(0,184,148,0.25)',  color: '#00a878', label: `${days}d left` };
 }
 
+// ── Payment method badge helper ───────────────────────────────────
+function PaymentBadge({ method }) {
+  if (method === 'upi') {
+    return (
+      <span style={{ background: 'rgba(124,58,237,0.10)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>
+        📲 UPI
+      </span>
+    );
+  }
+  return (
+    <span style={{ background: 'rgba(0,184,148,0.10)', color: '#00a878', border: '1px solid rgba(0,184,148,0.25)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700 }}>
+      💵 Cash
+    </span>
+  );
+}
+
 export default function ReceptionistDashboard() {
   const { session, logout, getPatients, getUsers, updatePatientStatus, updateFollowUp, addPatient } = useApp();
   const [tab,      setTab]      = useState('register');
@@ -133,6 +149,10 @@ function TokenPopup({ patient, onClose }) {
         <div style={{ color: 'var(--text-muted)', fontSize: 14, marginBottom: 4 }}>Dr. {patient.doctorName}</div>
         <div style={{ fontSize: 12, color: 'var(--text-light)', marginBottom: 20 }}>{patient.date} · {patient.time}</div>
         <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '14px', marginBottom: 20, fontSize: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ color: 'var(--text-muted)' }}>Payment Method</span>
+            <PaymentBadge method={patient.paymentMethod} />
+          </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: patient.dues > 0 ? 8 : 0 }}>
             <span style={{ color: 'var(--text-muted)' }}>Amount Paid</span>
             <span style={{ color: 'var(--success)', fontWeight: 600 }}>Rs. {patient.paid || 0}</span>
@@ -152,13 +172,16 @@ function TokenPopup({ patient, onClose }) {
 
 /* ── Patient Register ─────────────────────────────────────────── */
 function PatientRegister({ doctors, patients, onRegistered }) {
-  const init = { name: '', age: '', phone: '', whatsapp: '', gender: 'male', symptoms: '', doctorId: '', totalFee: '', paid: '', notes: '' };
+  const init = {
+    name: '', age: '', phone: '', whatsapp: '', gender: 'male',
+    symptoms: '', doctorId: '', totalFee: '', paid: '', notes: '',
+    paymentMethod: 'cash',
+  };
   const [form, setForm] = useState(init);
   const [err,  setErr]  = useState('');
   const [busy, setBusy] = useState(false);
   const f = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  const todayStr = new Date().toISOString().split('T')[0];
   const dues = Math.max(0, (parseFloat(form.totalFee) || 0) - (parseFloat(form.paid) || 0));
 
   async function register() {
@@ -174,6 +197,7 @@ function PatientRegister({ doctors, patients, onRegistered }) {
         doctorId: form.doctorId,
         totalFee: parseFloat(form.totalFee) || 0,
         paid:     parseFloat(form.paid)     || 0,
+        paymentMethod: form.paymentMethod,
       });
       setForm(init);
     } catch (e) { setErr(e.message); }
@@ -244,6 +268,37 @@ function PatientRegister({ doctors, patients, onRegistered }) {
           <Card>
             <h3 style={{ fontSize: 16, marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--border)' }}>💰 Payment Details</h3>
             <div style={{ display: 'grid', gap: 14 }}>
+
+              {/* ── Payment Method Toggle ── */}
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>Payment Method</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[
+                    { value: 'cash', label: '💵 Cash', color: '#00a878', bg: 'rgba(0,184,148,0.10)', border: 'rgba(0,184,148,0.40)' },
+                    { value: 'upi',  label: '📲 UPI',  color: '#7c3aed', bg: 'rgba(124,58,237,0.10)', border: 'rgba(124,58,237,0.40)' },
+                  ].map((opt) => {
+                    const selected = form.paymentMethod === opt.value;
+                    return (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => f('paymentMethod', opt.value)}
+                        style={{
+                          flex: 1, padding: '10px 0', borderRadius: 10, cursor: 'pointer',
+                          border: `2px solid ${selected ? opt.border : 'var(--border)'}`,
+                          background: selected ? opt.bg : 'var(--surface)',
+                          color: selected ? opt.color : 'var(--text-muted)',
+                          fontWeight: selected ? 700 : 500, fontSize: 14,
+                          fontFamily: 'inherit', transition: '.15s',
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <Input label="Total Fee (Rs.)" type="number" value={form.totalFee} onChange={(e) => f('totalFee', e.target.value)} placeholder="0" />
               <Input label="Amount Paid Now (Rs.)" type="number" value={form.paid} onChange={(e) => f('paid', e.target.value)} placeholder="0" />
               <div style={{ background: dues > 0 ? 'var(--danger-light)' : 'var(--success-light)', borderRadius: 10, padding: '12px 14px' }}>
@@ -338,8 +393,9 @@ function QueueCard({ patient: p, onUpdateStatus, onUpdateFollowUp }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 600, fontSize: 15, textDecoration: p.status === 'done' ? 'line-through' : 'none', color: p.status === 'done' ? 'var(--text-muted)' : 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
           <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.symptoms?.substring(0, 50)}{p.symptoms?.length > 50 ? '…' : ''}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 2, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <span>🕐 {p.time}</span>
+            <PaymentBadge method={p.paymentMethod} />
             {p.dues > 0 && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>⚠️ Due: Rs.{p.dues}</span>}
             {p.followUpDate && days !== null && (
               <span style={{ color: followUpBadgeStyle(days).color, fontWeight: 600 }}>

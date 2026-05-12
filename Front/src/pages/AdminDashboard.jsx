@@ -24,6 +24,22 @@ function fmt24(t) {
   return `${h}:${m} ${ampm}`;
 }
 
+// ── Payment method badge helper ───────────────────────────────────
+function PaymentBadge({ method }) {
+  if (method === 'upi') {
+    return (
+      <span style={{ background: 'rgba(124,58,237,0.10)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+        📲 UPI
+      </span>
+    );
+  }
+  return (
+    <span style={{ background: 'rgba(0,184,148,0.10)', color: '#00a878', border: '1px solid rgba(0,184,148,0.25)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      💵 Cash
+    </span>
+  );
+}
+
 // ── Weekly Schedule Picker ────────────────────────────────────────────────────
 function WeeklySchedulePicker({ value, onChange }) {
   const schedule = value && value.length === 7 ? value : defaultSchedule();
@@ -123,14 +139,13 @@ function ScheduleDisplay({ schedule }) {
   );
 }
 
-// ── Token Limit Inline Editor (used inside DoctorCard) ───────────────────────
+// ── Token Limit Inline Editor ────────────────────────────────────
 function TokenLimitEditor({ doc, onSave }) {
   const [editing, setEditing] = useState(false);
   const [value,   setValue]   = useState(String(doc.dailyTokenLimit ?? 0));
   const [busy,    setBusy]    = useState(false);
   const [err,     setErr]     = useState('');
 
-  // Sync if doc prop changes (e.g. doctor updates from their dashboard)
   useEffect(() => { setValue(String(doc.dailyTokenLimit ?? 0)); }, [doc.dailyTokenLimit]);
 
   async function save(e) {
@@ -235,7 +250,7 @@ export default function AdminDashboard({ onChoosePlan }) {
   const { session, logout, refreshClinic, saveClinic: apiSaveClinic,
           getUsers, addUser, deleteUser,
           getPatients, updatePatientStatus,
-          updateTokenLimit } = useApp();
+          updateTokenLimit, updateFollowUp } = useApp();
 
   const [tab,      setTab]      = useState('overview');
   const [clinic,   setClinic]   = useState(null);
@@ -287,10 +302,15 @@ export default function AdminDashboard({ onChoosePlan }) {
     setPatients((prev) => prev.map((p) => p._id === patientId ? updated : p));
   }
 
-  // ── Token limit handler: updates user in local state immediately ──
   async function handleUpdateTokenLimit(doctorId, limit) {
     const updated = await updateTokenLimit(doctorId, limit);
     setUsers((prev) => prev.map((u) => u._id === doctorId ? { ...u, dailyTokenLimit: updated.dailyTokenLimit } : u));
+    return updated;
+  }
+
+  async function handleUpdateFollowUp(patientId, followUpDate, followUpNote) {
+    const updated = await updateFollowUp(patientId, followUpDate, followUpNote);
+    setPatients((prev) => prev.map((p) => p._id === patientId ? updated : p));
     return updated;
   }
 
@@ -314,11 +334,15 @@ export default function AdminDashboard({ onChoosePlan }) {
     </span>
   );
 
+  // Count upcoming follow-ups (today or future)
+  const followUpPatients = patients.filter((p) => p.followUpDate && p.followUpDate >= todayStr);
+
   const navItems = [
     { icon:'📊', label:'Overview',      active: tab==='overview',      onClick:()=>setTab('overview') },
     { icon:'👨‍⚕️', label:'Doctors',       active: tab==='doctors',       onClick:()=>setTab('doctors'),       badge: doctors.length || undefined },
     { icon:'📋', label:'Receptionists', active: tab==='receptionists', onClick:()=>setTab('receptionists'), badge: receptionists.length || undefined },
     { icon:'👥', label:'All Patients',  active: tab==='patients',      onClick:()=>setTab('patients') },
+    { icon:'📅', label:'Follow-ups',    active: tab==='followups',     onClick:()=>setTab('followups'),     badge: followUpPatients.length || undefined },
     { icon:'⚙️', label:'Settings',      active: tab==='settings',      onClick:()=>setTab('settings') },
   ];
 
@@ -339,6 +363,7 @@ export default function AdminDashboard({ onChoosePlan }) {
           {tab === 'doctors'       && <DoctorManagement doctors={doctors} patients={patients} onAdd={handleAddUser} onDelete={handleDeleteUser} onUpdateTokenLimit={handleUpdateTokenLimit} />}
           {tab === 'receptionists' && <ReceptionistManagement receptionists={receptionists} onAdd={handleAddUser} onDelete={handleDeleteUser} />}
           {tab === 'patients'      && <AllPatients patients={patients} />}
+          {tab === 'followups'     && <AdminFollowUps patients={patients} doctors={doctors} onUpdateFollowUp={handleUpdateFollowUp} />}
           {tab === 'settings'      && <ClinicSettings clinic={clinic} onSave={handleSaveClinic} />}
         </DashboardLayout>
       </div>
@@ -352,9 +377,9 @@ function Overview({ clinic, doctors, todayPatients, paidTotal, duesTotal }) {
   return (
     <div>
       <SectionHeader title="Clinic Overview" subtitle={`Today's summary — ${today()}`} />
+      {/* ── REMOVED: Total Doctors stat card ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))', gap:16, marginBottom:24 }}>
         <Stat label="Today's Tokens"     value={todayPatients.length}       icon="🎫" color="var(--primary)" />
-        <Stat label="Total Doctors"       value={doctors.length}             icon="👨‍⚕️" color="var(--accent)" />
         <Stat label="Today's Revenue Rs." value={paidTotal.toLocaleString()} icon="💰" color="var(--success)" />
         <Stat label="Pending Dues Rs."    value={duesTotal.toLocaleString()} icon="⚠️" color="var(--danger)" />
       </div>
@@ -405,7 +430,7 @@ function Overview({ clinic, doctors, todayPatients, paidTotal, duesTotal }) {
             <table style={{ width:'100%',borderCollapse:'collapse',fontSize:13 }}>
               <thead>
                 <tr style={{ background:'var(--surface2)' }}>
-                  {['Token','Patient','Doctor','Symptoms','Paid Rs.','Dues Rs.','Time','Status'].map((h) => (
+                  {['Token','Patient','Doctor','Symptoms','Paid Rs.','Dues Rs.','Time','Payment','Status'].map((h) => (
                     <th key={h} style={{ padding:'10px 14px',textAlign:'left',fontWeight:600,color:'var(--text-muted)',whiteSpace:'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -420,6 +445,7 @@ function Overview({ clinic, doctors, todayPatients, paidTotal, duesTotal }) {
                     <td style={{ padding:'10px 14px',color:'var(--success)',fontWeight:500 }}>{p.paid||0}</td>
                     <td style={{ padding:'10px 14px',color:p.dues>0?'var(--danger)':'var(--text-muted)',fontWeight:p.dues>0?600:400 }}>{p.dues||0}</td>
                     <td style={{ padding:'10px 14px',color:'var(--text-muted)',whiteSpace:'nowrap' }}>{p.time}</td>
+                    <td style={{ padding:'10px 14px' }}><PaymentBadge method={p.paymentMethod} /></td>
                     <td style={{ padding:'10px 14px' }}>
                       <Badge color={p.status==='called'?'green':p.status==='done'?'gray':'blue'}>
                         {p.status==='waiting'?'Waiting':p.status==='called'?'Called':'Done'}
@@ -432,6 +458,248 @@ function Overview({ clinic, doctors, todayPatients, paidTotal, duesTotal }) {
           </div>
         )}
       </Card>
+    </div>
+  );
+}
+
+/* ── Admin Follow-ups ─────────────────────────────────────────────────────── */
+function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  const [doctorFilter, setDoctorFilter] = useState('all');
+  const [dateFilter,   setDateFilter]   = useState('upcoming');
+  const [search,       setSearch]       = useState('');
+  const [editingId,    setEditingId]    = useState(null);
+  const [editDate,     setEditDate]     = useState('');
+  const [editNote,     setEditNote]     = useState('');
+  const [busy,         setBusy]         = useState(false);
+
+  // Only patients that have a follow-up date set
+  const followUpPatients = patients.filter((p) => p.followUpDate);
+
+  const filtered = followUpPatients.filter((p) => {
+    const matchDoctor = doctorFilter === 'all' || String(p.doctorId) === doctorFilter;
+    const matchSearch = !search ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      (p.phone && p.phone.includes(search));
+    const matchDate =
+      dateFilter === 'all'      ? true :
+      dateFilter === 'today'    ? p.followUpDate === todayStr :
+      dateFilter === 'upcoming' ? p.followUpDate >= todayStr :
+      dateFilter === 'overdue'  ? p.followUpDate < todayStr  : true;
+    return matchDoctor && matchSearch && matchDate;
+  }).sort((a, b) => (a.followUpDate || '').localeCompare(b.followUpDate || ''));
+
+  function startEdit(p) {
+    setEditingId(p._id);
+    setEditDate(p.followUpDate || '');
+    setEditNote(p.followUpNote || '');
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditDate('');
+    setEditNote('');
+  }
+
+  async function saveEdit(patientId) {
+    setBusy(true);
+    try {
+      await onUpdateFollowUp(patientId, editDate, editNote);
+      setEditingId(null);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearFollowUp(patientId) {
+    if (!window.confirm('Clear this follow-up?')) return;
+    try {
+      await onUpdateFollowUp(patientId, null, '');
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  function getFollowUpStatus(followUpDate) {
+    if (!followUpDate) return null;
+    if (followUpDate < todayStr)  return { label: 'Overdue',  color: 'red',    bg: 'rgba(231,76,60,0.08)',   text: '#e74c3c' };
+    if (followUpDate === todayStr) return { label: 'Today',    color: 'green',  bg: 'rgba(0,184,148,0.10)',   text: '#00a878' };
+    return                               { label: 'Upcoming', color: 'blue',   bg: 'rgba(21,101,168,0.08)', text: '#1565a8' };
+  }
+
+  // Summary counts
+  const todayCount    = followUpPatients.filter((p) => p.followUpDate === todayStr).length;
+  const upcomingCount = followUpPatients.filter((p) => p.followUpDate > todayStr).length;
+  const overdueCount  = followUpPatients.filter((p) => p.followUpDate < todayStr).length;
+
+  return (
+    <div>
+      <SectionHeader
+        title="Follow-ups"
+        subtitle={`${followUpPatients.length} patients with scheduled follow-ups`}
+      />
+
+      {/* ── Summary Strip ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
+        {[
+          { label: 'Today',    value: todayCount,    icon: '📅', color: '#00a878', bg: 'rgba(0,184,148,0.08)',   border: 'rgba(0,184,148,0.20)',   filter: 'today'    },
+          { label: 'Upcoming', value: upcomingCount, icon: '🔮', color: '#1565a8', bg: 'rgba(21,101,168,0.07)', border: 'rgba(21,101,168,0.18)',  filter: 'upcoming' },
+          { label: 'Overdue',  value: overdueCount,  icon: '⚠️', color: '#e74c3c', bg: 'rgba(231,76,60,0.07)',  border: 'rgba(231,76,60,0.18)',   filter: 'overdue'  },
+          { label: 'All',      value: followUpPatients.length, icon: '📋', color: '#4a6278', bg: 'rgba(74,98,120,0.06)', border: 'rgba(74,98,120,0.15)', filter: 'all' },
+        ].map((s) => (
+          <div
+            key={s.label}
+            onClick={() => setDateFilter(s.filter)}
+            style={{ background: dateFilter === s.filter ? s.bg : '#fff', border: `1.5px solid ${dateFilter === s.filter ? s.border : 'var(--border, #e4eaf1)'}`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 12 }}
+            onMouseEnter={(e) => { if (dateFilter !== s.filter) e.currentTarget.style.borderColor = s.border; }}
+            onMouseLeave={(e) => { if (dateFilter !== s.filter) e.currentTarget.style.borderColor = 'var(--border, #e4eaf1)'; }}
+          >
+            <span style={{ fontSize: 22 }}>{s.icon}</span>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 20, color: dateFilter === s.filter ? s.color : 'var(--text, #1a2a3a)', lineHeight: 1 }}>{s.value}</div>
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2, fontWeight: dateFilter === s.filter ? 700 : 500 }}>{s.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Filters Row ── */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search patient name or phone…"
+          style={{ flex: '1 1 200px', minWidth: 0 }}
+        />
+        <Select
+          value={doctorFilter}
+          onChange={(e) => setDoctorFilter(e.target.value)}
+          style={{ flex: '0 0 180px' }}
+        >
+          <option value="all">All Doctors</option>
+          {doctors.map((d) => (
+            <option key={d._id} value={d._id}>{d.name}</option>
+          ))}
+        </Select>
+      </div>
+
+      {/* ── Table / Empty ── */}
+      {filtered.length === 0 ? (
+        <Empty
+          icon="📅"
+          title="No follow-ups found"
+          desc={dateFilter === 'overdue' ? 'No overdue follow-ups.' : dateFilter === 'today' ? 'No follow-ups scheduled for today.' : 'No follow-ups match your filters.'}
+        />
+      ) : (
+        <Card noPad>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'var(--surface2)' }}>
+                  {['Patient', 'Phone', 'Doctor', 'Last Visit', 'Follow-up Date', 'Note', 'Status', 'Actions'].map((h) => (
+                    <th key={h} style={{ padding: '11px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((p, i) => {
+                  const st = getFollowUpStatus(p.followUpDate);
+                  const isEditing = editingId === p._id;
+                  return (
+                    <tr key={p._id} style={{ borderBottom: '1px solid var(--border)', background: isEditing ? 'rgba(21,101,168,0.03)' : (i % 2 === 0 ? '#fff' : 'var(--surface2, #fafbfc)') }}>
+                      {/* Patient */}
+                      <td style={{ padding: '11px 14px' }}>
+                        <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>{p.name}</div>
+                        {p.age && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Age {p.age}{p.gender ? ` · ${p.gender}` : ''}</div>}
+                      </td>
+                      {/* Phone */}
+                      <td style={{ padding: '11px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{p.phone || '—'}</td>
+                      {/* Doctor */}
+                      <td style={{ padding: '11px 14px' }}>
+                        <div style={{ fontWeight: 600, color: '#1565a8', fontSize: 13 }}>{p.doctorName}</div>
+                        {p.specialist && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.specialist}</div>}
+                      </td>
+                      {/* Last Visit */}
+                      <td style={{ padding: '11px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 12.5 }}>{p.date || '—'}</td>
+                      {/* Follow-up Date */}
+                      <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                        {isEditing ? (
+                          <input
+                            type="date"
+                            value={editDate}
+                            onChange={(e) => setEditDate(e.target.value)}
+                            style={{ padding: '4px 8px', borderRadius: 7, border: '1.5px solid #1565a8', fontSize: 13, color: '#0a3d62', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }}
+                          />
+                        ) : (
+                          <span style={{ fontWeight: 700, color: st?.text || 'var(--text)', fontSize: 13 }}>{p.followUpDate || '—'}</span>
+                        )}
+                      </td>
+                      {/* Note */}
+                      <td style={{ padding: '11px 14px', maxWidth: 160 }}>
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editNote}
+                            onChange={(e) => setEditNote(e.target.value)}
+                            placeholder="Note (optional)"
+                            style={{ width: '100%', padding: '4px 8px', borderRadius: 7, border: '1.5px solid #1565a8', fontSize: 13, color: '#0a3d62', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
+                          />
+                        ) : (
+                          <span style={{ color: p.followUpNote ? 'var(--text)' : 'var(--text-muted)', fontStyle: p.followUpNote ? 'normal' : 'italic', fontSize: 12.5, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {p.followUpNote || 'No note'}
+                          </span>
+                        )}
+                      </td>
+                      {/* Status */}
+                      <td style={{ padding: '11px 14px' }}>
+                        {st && (
+                          <span style={{ background: st.bg, color: st.text, border: `1px solid ${st.text}30`, borderRadius: 20, padding: '3px 10px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
+                            {st.label === 'Overdue' ? '⚠️' : st.label === 'Today' ? '📅' : '🔮'} {st.label}
+                          </span>
+                        )}
+                      </td>
+                      {/* Actions */}
+                      <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
+                        {isEditing ? (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => saveEdit(p._id)}
+                              disabled={busy}
+                              style={{ padding: '4px 12px', borderRadius: 7, border: 'none', background: '#00b894', color: '#fff', fontSize: 12, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
+                              {busy ? '…' : '✓ Save'}
+                            </button>
+                            <button
+                              onClick={cancelEdit}
+                              style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid #d0dce8', background: '#fff', color: '#4a6278', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 6 }}>
+                            <button
+                              onClick={() => startEdit(p)}
+                              style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(21,101,168,0.25)', background: 'rgba(21,101,168,0.06)', color: '#1565a8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              ✏️ Edit
+                            </button>
+                            <button
+                              onClick={() => clearFollowUp(p._id)}
+                              style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(231,76,60,0.25)', background: 'rgba(231,76,60,0.06)', color: '#e74c3c', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                              🗑
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
     </div>
   );
 }
@@ -453,7 +721,6 @@ function DoctorDetailModal({ doc, patients, onClose, onUpdateTokenLimit }) {
 
   return (
     <Modal title="" onClose={onClose}>
-      {/* Doctor header */}
       <div style={{ background: 'linear-gradient(135deg, #0a3d62 0%, #1565a8 100%)', borderRadius: 14, padding: '20px 22px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
         <div style={{ width: 56, height: 56, borderRadius: 14, background: 'rgba(255,255,255,0.15)', border: '2px solid rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, flexShrink: 0 }}>👨‍⚕️</div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -467,7 +734,6 @@ function DoctorDetailModal({ doc, patients, onClose, onUpdateTokenLimit }) {
         </div>
       </div>
 
-      {/* Token limit section in modal */}
       <div style={{ background: limit > 0 ? 'rgba(21,101,168,0.06)' : 'rgba(0,184,148,0.06)', border: `1.5px solid ${limit > 0 ? 'rgba(21,101,168,0.18)' : 'rgba(0,184,148,0.18)'}`, borderRadius: 12, padding: '12px 16px', marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>🎫 Daily Token Limit</div>
         <TokenLimitEditor doc={doc} onSave={onUpdateTokenLimit} />
@@ -479,7 +745,6 @@ function DoctorDetailModal({ doc, patients, onClose, onUpdateTokenLimit }) {
         )}
       </div>
 
-      {/* Today's stats */}
       <div style={{ marginBottom: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>📆 Today's Summary</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 10 }}>
@@ -511,14 +776,12 @@ function DoctorDetailModal({ doc, patients, onClose, onUpdateTokenLimit }) {
         </div>
       </div>
 
-      {/* All-time totals */}
       <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '11px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18, flexWrap: 'wrap', gap: 8 }}>
         <span style={{ fontSize: 12.5, color: 'var(--text-muted)', fontWeight: 600 }}>📊 All-time: {allDocPat.length} patients</span>
         <span style={{ fontSize: 12.5, color: '#00a878', fontWeight: 700 }}>💰 Rs. {totalRev.toLocaleString()} collected</span>
         <span style={{ fontSize: 12.5, color: '#e74c3c', fontWeight: 700 }}>⚠️ Rs. {totalDue.toLocaleString()} dues</span>
       </div>
 
-      {/* Today's token list */}
       <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>🎫 Today's Tokens ({todayDocPat.length})</div>
       {todayDocPat.length === 0 ? (
         <div style={{ textAlign: 'center', padding: '28px 0', color: 'var(--text-muted)' }}>
@@ -540,6 +803,7 @@ function DoctorDetailModal({ doc, patients, onClose, onUpdateTokenLimit }) {
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div style={{ fontSize: 12, color: '#00a878', fontWeight: 700 }}>+Rs.{p.paid || 0}</div>
                 {p.dues > 0 && <div style={{ fontSize: 11, color: '#e74c3c', fontWeight: 600 }}>⚠️ Rs.{p.dues}</div>}
+                <div style={{ marginTop: 4 }}><PaymentBadge method={p.paymentMethod} /></div>
               </div>
               <Badge color={p.status === 'called' ? 'yellow' : p.status === 'done' ? 'gray' : 'blue'}>
                 {p.status === 'waiting' ? '⏳' : p.status === 'called' ? '📢' : '✓'}
@@ -589,7 +853,6 @@ function DoctorManagement({ doctors, patients, onAdd, onDelete, onUpdateTokenLim
     catch(e) { alert(e.message); }
   }
 
-  // Keep detailDoc in sync when users state updates (e.g. token limit changed)
   const syncedDetailDoc = detailDoc
     ? doctors.find((d) => d._id === detailDoc._id) || detailDoc
     : null;
@@ -697,12 +960,9 @@ function DoctorCard({ doc, onRemove, onClick, onUpdateTokenLimit }) {
         {doc.phone && <div style={{ color:'var(--text-muted,#6b8299)' }}>📞 {doc.phone}</div>}
         {doc.email && <div style={{ color:'var(--text-muted,#6b8299)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>✉️ {doc.email}</div>}
         {doc.fee   && <div style={{ color:'var(--text-muted,#6b8299)' }}>💰 Rs. {doc.fee} per consultation</div>}
-
-        {/* ── Token limit display on card — click Edit opens inline editor ── */}
         <div style={{ background: limit > 0 ? 'rgba(21,101,168,0.06)' : 'rgba(0,184,148,0.05)', border: `1px solid ${limit > 0 ? 'rgba(21,101,168,0.15)' : 'rgba(0,184,148,0.15)'}`, borderRadius: 8, padding: '7px 10px', marginTop: 2 }}>
           <TokenLimitEditor doc={doc} onSave={onUpdateTokenLimit} />
         </div>
-
         <ScheduleDisplay schedule={doc.schedule} />
       </div>
 
@@ -825,14 +1085,14 @@ export function AllPatients({ patients }) {
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
             <thead>
               <tr style={{ background:'var(--surface2)' }}>
-                {['Token','Name','Age','Phone','Doctor','Symptoms','Paid Rs.','Dues Rs.','Date','Time','Status'].map((h) => (
+                {['Token','Name','Age','Phone','Doctor','Symptoms','Paid Rs.','Dues Rs.','Payment','Date','Time','Status'].map((h) => (
                   <th key={h} style={{ padding:'12px 14px',textAlign:'left',fontWeight:600,color:'var(--text-muted)',whiteSpace:'nowrap',borderBottom:'1px solid var(--border)' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={11} style={{ padding:'3rem',textAlign:'center',color:'var(--text-muted)' }}>No patients found</td></tr>
+                <tr><td colSpan={12} style={{ padding:'3rem',textAlign:'center',color:'var(--text-muted)' }}>No patients found</td></tr>
               ) : filtered.map((p) => (
                 <tr key={p._id} style={{ borderBottom:'1px solid var(--border)' }}>
                   <td style={{ padding:'10px 14px' }}><TokenBadge token={p.token} size="sm" status={p.status} /></td>
@@ -843,6 +1103,7 @@ export function AllPatients({ patients }) {
                   <td style={{ padding:'10px 14px',color:'var(--text-muted)',maxWidth:130,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{p.symptoms}</td>
                   <td style={{ padding:'10px 14px',color:'var(--success)',fontWeight:500 }}>{p.paid||0}</td>
                   <td style={{ padding:'10px 14px',color:p.dues>0?'var(--danger)':'var(--text-muted)',fontWeight:p.dues>0?600:400 }}>{p.dues||0}</td>
+                  <td style={{ padding:'10px 14px' }}><PaymentBadge method={p.paymentMethod} /></td>
                   <td style={{ padding:'10px 14px',color:'var(--text-muted)',whiteSpace:'nowrap' }}>{p.date}</td>
                   <td style={{ padding:'10px 14px',color:'var(--text-muted)',whiteSpace:'nowrap' }}>{p.time}</td>
                   <td style={{ padding:'10px 14px' }}><Badge color={p.status==='called'?'green':p.status==='done'?'gray':'blue'}>{p.status}</Badge></td>

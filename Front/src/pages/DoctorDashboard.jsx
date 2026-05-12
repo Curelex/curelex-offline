@@ -28,10 +28,26 @@ function followUpBadgeStyle(days) {
   return              { bg: 'rgba(0,184,148,0.08)',  border: 'rgba(0,184,148,0.25)',  color: '#00a878', label: `${days}d left` };
 }
 
+// ── Payment method badge helper ───────────────────────────────────
+function PaymentBadge({ method }) {
+  if (method === 'upi') {
+    return (
+      <span style={{ background: 'rgba(124,58,237,0.10)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.25)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+        📲 UPI
+      </span>
+    );
+  }
+  return (
+    <span style={{ background: 'rgba(0,184,148,0.10)', color: '#00a878', border: '1px solid rgba(0,184,148,0.25)', borderRadius: 20, padding: '2px 10px', fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      💵 Cash
+    </span>
+  );
+}
+
 export default function DoctorDashboard() {
   const {
     session, logout,
-    getMe,                  // ← fetch own user record (has dailyTokenLimit)
+    getMe,
     updateTokenLimit,
     getPatients,
     updatePatientStatus,
@@ -39,15 +55,15 @@ export default function DoctorDashboard() {
   } = useApp();
 
   const [tab,      setTab]     = useState('queue');
-  const [docUser,  setDocUser] = useState(null);   // own User document from API
+  const [docUser,  setDocUser] = useState(null);
   const [patients, setPatients] = useState([]);
 
-  const myId = session?.user?._id || session?.user?.id;
-
-  // ── Reload: fetch own record + patients (backend scopes to this doctor) ──
   const reload = useCallback(async () => {
     try {
-      const [me, pats] = await Promise.all([getMe(), getPatients()]);
+      const [me, pats] = await Promise.all([
+        getMe(),
+        getPatients({ date: 'today' }),
+      ]);
       setDocUser(me);
       setPatients(pats);
     } catch (e) {
@@ -63,9 +79,8 @@ export default function DoctorDashboard() {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Backend already filters by doctorId — just filter by today's date
   const myPatients    = patients.filter((p) => p.date === todayStr).sort((a, b) => a.token - b.token);
-  const allMyPatients = patients; // all dates, for follow-ups section
+  const allMyPatients = patients;
 
   const waiting = myPatients.filter((p) => p.status === 'waiting');
   const called  = myPatients.filter((p) => p.status === 'called');
@@ -75,10 +90,13 @@ export default function DoctorDashboard() {
   const dailyTokenLimit = docUser?.dailyTokenLimit ?? 0;
   const limitReached    = dailyTokenLimit > 0 && myPatients.length >= dailyTokenLimit;
   const greeting        = `${getGreeting()}, Dr. ${session?.user?.name || ''} · ${session?.user?.specialist || ''}`;
+  const myId            = docUser?._id;
+  const followUpCount   = allMyPatients.filter((p) => p.followUpDate).length;
 
   const navItems = [
-    { icon: '🩺', label: 'My Queue', active: tab === 'queue', onClick: () => setTab('queue'), badge: waiting.length || undefined },
-    { icon: '📊', label: 'My Stats', active: tab === 'stats', onClick: () => setTab('stats') },
+    { icon: '🩺', label: 'My Queue',   active: tab === 'queue',     onClick: () => setTab('queue'),     badge: waiting.length || undefined },
+    { icon: '📊', label: 'My Stats',   active: tab === 'stats',     onClick: () => setTab('stats') },
+    { icon: '📅', label: 'Follow-ups', active: tab === 'followups', onClick: () => setTab('followups'), badge: followUpCount || undefined },
   ];
 
   async function handleUpdateStatus(patientId, status) {
@@ -153,13 +171,17 @@ export default function DoctorDashboard() {
         {tab === 'stats' && (
           <StatsTab
             myPatients={myPatients}
-            allMyPatients={allMyPatients}
             waiting={waiting}
             called={called}
             done={done}
             docUser={docUser}
             myId={myId}
             onUpdateTokenLimit={handleUpdateTokenLimit}
+          />
+        )}
+        {tab === 'followups' && (
+          <FollowUpsTab
+            allMyPatients={allMyPatients}
             onUpdateFollowUp={handleUpdateFollowUp}
           />
         )}
@@ -241,9 +263,12 @@ function CurrentPatientCard({ patient: p, onUpdateStatus }) {
         <div style={{ flex: 1, color: '#fff', minWidth: 0 }}>
           <div style={{ fontSize: 22, fontWeight: 700, marginBottom: 6, wordBreak: 'break-word' }}>{p.name}</div>
           <div style={{ fontSize: 14, opacity: 0.85, marginBottom: 4 }}>🩺 <em>{p.symptoms}</em></div>
-          <div style={{ fontSize: 12, opacity: 0.6 }}>{p.gender === 'female' ? '♀' : '♂'} {p.age ? `${p.age} yrs ·` : ''} 🕐 {p.time}</div>
+          <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 6 }}>{p.gender === 'female' ? '♀' : '♂'} {p.age ? `${p.age} yrs ·` : ''} 🕐 {p.time}</div>
+          <div style={{ display: 'inline-block', background: p.paymentMethod === 'upi' ? 'rgba(124,58,237,0.30)' : 'rgba(0,184,148,0.30)', border: `1px solid ${p.paymentMethod === 'upi' ? 'rgba(124,58,237,0.5)' : 'rgba(0,184,148,0.5)'}`, borderRadius: 20, padding: '3px 12px', fontSize: 12, fontWeight: 600, color: '#fff' }}>
+            {p.paymentMethod === 'upi' ? '📲 UPI' : '💵 Cash'}
+          </div>
           {p.dues > 0 && (
-            <div style={{ marginTop: 8, display: 'inline-block', background: 'rgba(255,80,80,0.25)', border: '1px solid rgba(255,80,80,0.4)', borderRadius: 20, padding: '3px 12px', fontSize: 12, fontWeight: 600 }}>
+            <div style={{ marginTop: 8, display: 'inline-block', background: 'rgba(255,80,80,0.25)', border: '1px solid rgba(255,80,80,0.4)', borderRadius: 20, padding: '3px 12px', fontSize: 12, fontWeight: 600, marginLeft: 6 }}>
               ⚠️ Dues: Rs. {p.dues}
             </div>
           )}
@@ -279,8 +304,9 @@ function TokenRow({ patient: p, isLast, onUpdateStatus, onUpdateFollowUp }) {
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 700, fontSize: 15, color: p.status === 'done' ? 'var(--text-muted)' : 'var(--text)', textDecoration: p.status === 'done' ? 'line-through' : 'none', marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
           <div style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.symptoms?.substring(0, 60)}{p.symptoms?.length > 60 ? '…' : ''}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 3, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
             <span>{p.gender === 'female' ? '♀' : '♂'} {p.age ? `${p.age} yrs · ` : ''}🕐 {p.time}</span>
+            <PaymentBadge method={p.paymentMethod} />
             {p.dues > 0 && <span style={{ color: 'var(--danger)' }}>⚠️ Due Rs.{p.dues}</span>}
             {p.followUpDate && days !== null && (
               <span style={{ color: followUpBadgeStyle(days).color, fontWeight: 600 }}>
@@ -423,8 +449,88 @@ function TokenLimitEditor({ docUser, myId, onUpdateTokenLimit }) {
   );
 }
 
-/* ── Follow-up Section (Stats Tab) ──────────────────────────── */
-function FollowUpSection({ allMyPatients, onUpdateFollowUp }) {
+/* ── Stats Tab ────────────────────────────────────────────────── */
+function StatsTab({ myPatients, waiting, called, done, docUser, myId, onUpdateTokenLimit }) {
+  const totalRev  = myPatients.reduce((s, p) => s + (p.paid  || 0), 0);
+  const totalDues = myPatients.reduce((s, p) => s + (p.dues  || 0), 0);
+  const limit     = docUser?.dailyTokenLimit ?? 0;
+
+  return (
+    <div>
+      <SectionHeader title="My Statistics" subtitle={`Today, ${today()}`} />
+
+      <div style={{ marginBottom: 24 }}>
+        <TokenLimitEditor docUser={docUser} myId={myId} onUpdateTokenLimit={onUpdateTokenLimit} />
+        {limit > 0 && (
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ flex: 1, height: 8, borderRadius: 4, background: '#e8eff6', overflow: 'hidden' }}>
+              <div style={{ height: '100%', borderRadius: 4, background: myPatients.length >= limit ? '#e74c3c' : '#7c3aed', width: `${Math.min((myPatients.length / limit) * 100, 100)}%`, transition: 'width 0.3s' }} />
+            </div>
+            <span style={{ fontSize: 12, fontWeight: 700, color: myPatients.length >= limit ? '#e74c3c' : '#7c3aed', whiteSpace: 'nowrap' }}>
+              {myPatients.length}/{limit} used
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="stats-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
+        <Stat label="Total Patients Today"  value={myPatients.length} icon="👥" color="#7c3aed" />
+        <Stat label="Completed"             value={done.length}       icon="✅" color="var(--success)" />
+        <Stat label="Still Waiting"         value={waiting.length}    icon="⏳" color="var(--primary)" />
+        <Stat label="Revenue Collected Rs." value={totalRev.toLocaleString()}  icon="💰" color="var(--success)" />
+        <Stat label="Total Dues Rs."        value={totalDues.toLocaleString()} icon="⚠️" color="var(--danger)" />
+      </div>
+
+      {myPatients.length > 0 && (
+        <Card noPad style={{ marginBottom: 24 }}>
+          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
+            <h3 style={{ fontSize: 15 }}>Patient Breakdown</h3>
+          </div>
+          <div className="stats-table-wrap" style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: 'var(--surface2)' }}>
+                  {['Token','Name','Age','Symptoms','Fee Rs.','Paid Rs.','Dues Rs.','Payment','Follow-up','Status'].map((h) => (
+                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {myPatients.map((p) => {
+                  const days   = daysUntil(p.followUpDate);
+                  const fStyle = p.followUpDate ? followUpBadgeStyle(days) : null;
+                  return (
+                    <tr key={p._id || p.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 14px' }}><TokenBadge token={p.token} size="sm" status={p.status} /></td>
+                      <td style={{ padding: '10px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{p.name}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.age || '-'}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--text-muted)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.symptoms}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.totalFee || 0}</td>
+                      <td style={{ padding: '10px 14px', color: 'var(--success)', fontWeight: 500 }}>{p.paid || 0}</td>
+                      <td style={{ padding: '10px 14px', color: p.dues > 0 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: p.dues > 0 ? 600 : 400 }}>{p.dues || 0}</td>
+                      <td style={{ padding: '10px 14px' }}><PaymentBadge method={p.paymentMethod} /></td>
+                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                        {p.followUpDate
+                          ? <span style={{ color: fStyle.color, fontWeight: 600, fontSize: 12 }}>📅 {p.followUpDate}<br /><span style={{ fontSize: 10 }}>{fStyle.label}</span></span>
+                          : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                      </td>
+                      <td style={{ padding: '10px 14px' }}>
+                        <Badge color={p.status === 'called' ? 'yellow' : p.status === 'done' ? 'gray' : 'blue'}>{p.status}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ── Follow-ups Tab ───────────────────────────────────────────── */
+function FollowUpsTab({ allMyPatients, onUpdateFollowUp }) {
   const [editingId, setEditingId] = useState(null);
 
   const upcoming = allMyPatients
@@ -435,24 +541,21 @@ function FollowUpSection({ allMyPatients, onUpdateFollowUp }) {
   const urgent = upcoming.filter((p) => p._days <= 3);
   const rest   = upcoming.filter((p) => p._days > 3);
 
-  if (upcoming.length === 0) return (
-    <div style={{ background: 'rgba(124,58,237,0.04)', border: '1.5px solid rgba(124,58,237,0.15)', borderRadius: 14, padding: '28px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-      <div style={{ fontSize: 36, marginBottom: 8 }}>📅</div>
-      <div style={{ fontSize: 14, fontWeight: 600 }}>No follow-up dates set</div>
-      <div style={{ fontSize: 12, marginTop: 4 }}>Set follow-up dates from the queue tab using the 📅 button on each patient.</div>
-    </div>
-  );
-
   function renderRow(p) {
     const style = followUpBadgeStyle(p._days);
     const pid   = p._id || p.id;
     return (
       <div key={pid}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderBottom: '1px solid var(--border)', background: p._days <= 3 ? style.bg : '#fff', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '13px 16px', borderBottom: '1px solid var(--border)', background: p._days <= 3 ? style.bg : '#fff', flexWrap: 'wrap' }}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{p.symptoms?.substring(0, 50)}</div>
             {p.followUpNote && <div style={{ fontSize: 11.5, color: '#7c3aed', marginTop: 2 }}>📝 {p.followUpNote}</div>}
+            {p.phone && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                📞 {p.phone}{p.whatsapp && p.whatsapp !== p.phone ? ` · 💬 ${p.whatsapp}` : ''}
+              </div>
+            )}
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: style.color }}>{p.followUpDate}</div>
@@ -475,115 +578,53 @@ function FollowUpSection({ allMyPatients, onUpdateFollowUp }) {
   }
 
   return (
-    <div style={{ border: '1.5px solid rgba(124,58,237,0.2)', borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ padding: '12px 16px', background: 'linear-gradient(90deg, #7c3aed, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 16 }}>📅</span>
-          <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>Follow-up Dates</span>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          {urgent.length > 0 && <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>🔴 {urgent.length} urgent</span>}
-          <span style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>{upcoming.length} total</span>
-        </div>
-      </div>
-      {urgent.length > 0 && (
-        <>
-          <div style={{ padding: '7px 14px', background: 'rgba(231,76,60,0.07)', borderBottom: '1px solid rgba(231,76,60,0.15)', fontSize: 11, fontWeight: 700, color: '#c0392b', textTransform: 'uppercase', letterSpacing: 0.4 }}>⚠️ Needs attention soon</div>
-          {urgent.map(renderRow)}
-        </>
-      )}
-      {rest.length > 0 && (
-        <>
-          <div style={{ padding: '7px 14px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>📆 Upcoming</div>
-          {rest.map(renderRow)}
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ── Stats Tab ────────────────────────────────────────────────── */
-function StatsTab({ myPatients, allMyPatients, waiting, called, done, docUser, myId, onUpdateTokenLimit, onUpdateFollowUp }) {
-  const totalRev  = myPatients.reduce((s, p) => s + (p.paid  || 0), 0);
-  const totalDues = myPatients.reduce((s, p) => s + (p.dues  || 0), 0);
-  const limit     = docUser?.dailyTokenLimit ?? 0;
-
-  return (
     <div>
-      <SectionHeader title="My Statistics" subtitle={`Today, ${today()}`} />
+      <SectionHeader title="Follow-up Dates" subtitle="All your patients with scheduled follow-ups" />
 
-      {/* Token limit editor + progress bar */}
-      <div style={{ marginBottom: 24 }}>
-        <TokenLimitEditor docUser={docUser} myId={myId} onUpdateTokenLimit={onUpdateTokenLimit} />
-        {limit > 0 && (
-          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <div style={{ flex: 1, height: 8, borderRadius: 4, background: '#e8eff6', overflow: 'hidden' }}>
-              <div style={{ height: '100%', borderRadius: 4, background: myPatients.length >= limit ? '#e74c3c' : '#7c3aed', width: `${Math.min((myPatients.length / limit) * 100, 100)}%`, transition: 'width 0.3s' }} />
+      {upcoming.length === 0 ? (
+        <div style={{ background: 'rgba(124,58,237,0.04)', border: '1.5px solid rgba(124,58,237,0.15)', borderRadius: 14, padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+          <div style={{ fontSize: 40, marginBottom: 10 }}>📅</div>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6 }}>No follow-up dates set yet</div>
+          <div style={{ fontSize: 13 }}>Use the 📅 button on any patient in My Queue to set a follow-up date.</div>
+        </div>
+      ) : (
+        <div style={{ border: '1.5px solid rgba(124,58,237,0.2)', borderRadius: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '12px 16px', background: 'linear-gradient(90deg, #7c3aed, #4f46e5)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 16 }}>📅</span>
+              <span style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>All Follow-up Appointments</span>
             </div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: myPatients.length >= limit ? '#e74c3c' : '#7c3aed', whiteSpace: 'nowrap' }}>
-              {myPatients.length}/{limit} used
-            </span>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {urgent.length > 0 && (
+                <span style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>
+                  🔴 {urgent.length} urgent
+                </span>
+              )}
+              <span style={{ background: 'rgba(255,255,255,0.15)', color: '#fff', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 700 }}>
+                {upcoming.length} total
+              </span>
+            </div>
           </div>
-        )}
-      </div>
 
-      {/* Stat cards */}
-      <div className="stats-stat-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, marginBottom: 24 }}>
-        <Stat label="Total Patients Today"  value={myPatients.length} icon="👥" color="#7c3aed" />
-        <Stat label="Completed"             value={done.length}       icon="✅" color="var(--success)" />
-        <Stat label="Still Waiting"         value={waiting.length}    icon="⏳" color="var(--primary)" />
-        <Stat label="Revenue Collected Rs." value={totalRev.toLocaleString()}  icon="💰" color="var(--success)" />
-        <Stat label="Total Dues Rs."        value={totalDues.toLocaleString()} icon="⚠️" color="var(--danger)" />
-      </div>
+          {urgent.length > 0 && (
+            <>
+              <div style={{ padding: '7px 14px', background: 'rgba(231,76,60,0.07)', borderBottom: '1px solid rgba(231,76,60,0.15)', fontSize: 11, fontWeight: 700, color: '#c0392b', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                ⚠️ Needs attention soon (within 3 days)
+              </div>
+              {urgent.map(renderRow)}
+            </>
+          )}
 
-      {/* Patient breakdown table */}
-      {myPatients.length > 0 && (
-        <Card noPad style={{ marginBottom: 24 }}>
-          <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)', background: 'var(--surface2)' }}>
-            <h3 style={{ fontSize: 15 }}>Patient Breakdown</h3>
-          </div>
-          <div className="stats-table-wrap" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: 'var(--surface2)' }}>
-                  {['Token','Name','Age','Symptoms','Fee Rs.','Paid Rs.','Dues Rs.','Follow-up','Status'].map((h) => (
-                    <th key={h} style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {myPatients.map((p) => {
-                  const days   = daysUntil(p.followUpDate);
-                  const fStyle = p.followUpDate ? followUpBadgeStyle(days) : null;
-                  return (
-                    <tr key={p._id || p.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 14px' }}><TokenBadge token={p.token} size="sm" status={p.status} /></td>
-                      <td style={{ padding: '10px 14px', fontWeight: 600, whiteSpace: 'nowrap' }}>{p.name}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.age || '-'}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--text-muted)', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.symptoms}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.totalFee || 0}</td>
-                      <td style={{ padding: '10px 14px', color: 'var(--success)', fontWeight: 500 }}>{p.paid || 0}</td>
-                      <td style={{ padding: '10px 14px', color: p.dues > 0 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: p.dues > 0 ? 600 : 400 }}>{p.dues || 0}</td>
-                      <td style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                        {p.followUpDate
-                          ? <span style={{ color: fStyle.color, fontWeight: 600, fontSize: 12 }}>📅 {p.followUpDate}<br /><span style={{ fontSize: 10 }}>{fStyle.label}</span></span>
-                          : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
-                      </td>
-                      <td style={{ padding: '10px 14px' }}>
-                        <Badge color={p.status === 'called' ? 'yellow' : p.status === 'done' ? 'gray' : 'blue'}>{p.status}</Badge>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        </Card>
+          {rest.length > 0 && (
+            <>
+              <div style={{ padding: '7px 14px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+                📆 Upcoming
+              </div>
+              {rest.map(renderRow)}
+            </>
+          )}
+        </div>
       )}
-
-      {/* Follow-up dates section */}
-      <SectionHeader title="Follow-up Dates" subtitle="All patients with scheduled follow-ups" />
-      <FollowUpSection allMyPatients={allMyPatients} onUpdateFollowUp={onUpdateFollowUp} />
     </div>
   );
 }

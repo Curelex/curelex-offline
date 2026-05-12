@@ -32,6 +32,17 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// ── GET /api/users/me  — fetch own user record (doctor/receptionist) ──
+router.get('/me', auth, async (req, res) => {
+  try {
+    const user = await User.findOne({ _id: req.user.id, clinicId: req.user.clinicId }).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found.' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // ── POST /api/users  — add doctor or receptionist ────────────────
 router.post('/', auth, async (req, res) => {
   try {
@@ -61,7 +72,7 @@ router.post('/', auth, async (req, res) => {
       specialist:      specialist || '',
       fee:             fee        || 0,
       schedule:        sanitiseSchedule(schedule),
-      dailyTokenLimit: 0, // default: unlimited
+      dailyTokenLimit: 0,
     });
 
     const { password: _, ...safe } = user.toObject();
@@ -72,7 +83,6 @@ router.post('/', auth, async (req, res) => {
 });
 
 // ── PATCH /api/users/:id/schedule  — update doctor schedule ──────
-// Admin can update anyone; doctor can only update themselves.
 router.patch('/:id/schedule', auth, async (req, res) => {
   try {
     const isAdmin = req.user.role === 'admin';
@@ -94,8 +104,6 @@ router.patch('/:id/schedule', auth, async (req, res) => {
 });
 
 // ── PATCH /api/users/:id/token-limit  — set daily token limit ────
-// Admin can set limit for any doctor.
-// Doctor can set their own limit too.
 router.patch('/:id/token-limit', auth, async (req, res) => {
   try {
     const isAdmin  = req.user.role === 'admin';

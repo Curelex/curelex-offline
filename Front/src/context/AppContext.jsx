@@ -47,7 +47,7 @@ export function AppProvider({ children }) {
   );
 
   // ── Patients ─────────────────────────────────────────────────────
-  const getPatients         = useCallback(() => apiGetPatients(), []);
+  const getPatients         = useCallback((params = {}) => apiGetPatients(params), []);
   const addPatient          = useCallback((data) => apiAddPatient(data), []);
   const updatePatientStatus = useCallback(
     (patientId, status) => apiUpdatePatientStatus(patientId, status),
