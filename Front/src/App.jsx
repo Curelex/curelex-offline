@@ -1,15 +1,24 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
-import LandingPage from './pages/LandingPage';
-import SuperAdminDashboard from './pages/SuperAdminDashboard';
-import AdminDashboard from './pages/AdminDashboard';
-import ReceptionistDashboard from './pages/ReceptionistDashboard';
-import DoctorDashboard from './pages/DoctorDashboard';
-import PlanSelection from './pages/PlanSelection';
+import LandingPage            from './pages/LandingPage';
+import SuperAdminDashboard    from './pages/SuperAdminDashboard';
+import AdminDashboard         from './pages/AdminDashboard';
+import ReceptionistDashboard  from './pages/ReceptionistDashboard';
+import DoctorDashboard        from './pages/DoctorDashboard';
+import PlanSelection          from './pages/PlanSelection';
+import QueueTracker           from './pages/QueueTracker';
+
+// ── Public route check — /track/:token doesn't need login ────────────────────
+function isTrackingPage() {
+  return window.location.pathname.startsWith('/track/');
+}
 
 function Router() {
   const { session } = useApp();
   const [choosingPlan, setChoosingPlan] = useState(false);
+
+  // Public page — show tracking page regardless of login state
+  if (isTrackingPage()) return <QueueTracker />;
 
   if (!session) return <LandingPage />;
 

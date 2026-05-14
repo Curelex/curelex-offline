@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   DashboardLayout, Card, Stat, Btn, Badge, Input, Select,
   Modal, Alert, SectionHeader, Empty, TokenBadge,
@@ -8,7 +8,6 @@ import { useApp } from '../context/AppContext';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'];
-const DAY_SHORT = { Monday:'Mon', Tuesday:'Tue', Wednesday:'Wed', Thursday:'Thu', Friday:'Fri', Saturday:'Sat', Sunday:'Sun' };
 
 function defaultSchedule() {
   return DAYS.map((day) => ({ day, open: false, from: '09:00', to: '17:00' }));
@@ -23,6 +22,52 @@ function fmt24(t) {
   if (h === 0) h = 12;
   return `${h}:${m} ${ampm}`;
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// COMPLETE INDIA — ALL 36 STATES & UTs + ALL DISTRICTS
+// Source: Census of India / Ministry of Home Affairs
+// ══════════════════════════════════════════════════════════════════════════════
+const INDIA_STATES_DISTRICTS = {
+  "Andhra Pradesh": ["Alluri Sitharama Raju","Anakapalli","Ananthapuramu","Annamayya","Bapatla","Chittoor","Dr. B.R. Ambedkar Konaseema","East Godavari","Eluru","Guntur","Kakinada","Krishna","Kurnool","Nandyal","NTR","Palnadu","Parvathipuram Manyam","Prakasam","Sri Potti Sriramulu Nellore","Sri Sathya Sai","Srikakulam","Tirupati","Visakhapatnam","Vizianagaram","West Godavari","YSR Kadapa"],
+  "Arunachal Pradesh": ["Anjaw","Changlang","Dibang Valley","East Kameng","East Siang","Kamle","Kra Daadi","Kurung Kumey","Lepa Rada","Lohit","Longding","Lower Dibang Valley","Lower Siang","Lower Subansiri","Namsai","Pakke Kessang","Papum Pare","Shi Yomi","Siang","Tawang","Tirap","Upper Siang","Upper Subansiri","West Kameng","West Siang"],
+  "Assam": ["Bajali","Baksa","Barpeta","Biswanath","Bongaigaon","Cachar","Charaideo","Chirang","Darrang","Dhemaji","Dhubri","Dibrugarh","Dima Hasao","Goalpara","Golaghat","Hailakandi","Hojai","Jorhat","Kamrup","Kamrup Metropolitan","Karbi Anglong","Karimganj","Kokrajhar","Lakhimpur","Majuli","Morigaon","Nagaon","Nalbari","Sivasagar","Sonitpur","South Salmara-Mankachar","Tamulpur","Tinsukia","Udalguri","West Karbi Anglong"],
+  "Bihar": ["Araria","Arwal","Aurangabad","Banka","Begusarai","Bhagalpur","Bhojpur","Buxar","Darbhanga","East Champaran","Gaya","Gopalganj","Jamui","Jehanabad","Kaimur","Katihar","Khagaria","Kishanganj","Lakhisarai","Madhepura","Madhubani","Munger","Muzaffarpur","Nalanda","Nawada","Patna","Purnia","Rohtas","Saharsa","Samastipur","Saran","Sheikhpura","Sheohar","Sitamarhi","Siwan","Supaul","Vaishali","West Champaran"],
+  "Chhattisgarh": ["Balod","Baloda Bazar","Balrampur","Bastar","Bemetara","Bijapur","Bilaspur","Dantewada","Dhamtari","Durg","Gariaband","Gaurela-Pendra-Marwahi","Janjgir-Champa","Jashpur","Kabirdham","Kanker","Khairagarh-Chhuikhadan-Gandai","Kondagaon","Korba","Koriya","Mahasamund","Manendragarh-Chirmiri-Bharatpur","Mohla-Manpur-Ambagarh Chowki","Mungeli","Narayanpur","Raigarh","Raipur","Rajnandgaon","Sakti","Sarangarh-Bilaigarh","Sukma","Surajpur","Surguja"],
+  "Goa": ["North Goa","South Goa"],
+  "Gujarat": ["Ahmedabad","Amreli","Anand","Aravalli","Banaskantha","Bharuch","Bhavnagar","Botad","Chhota Udaipur","Dahod","Dang","Devbhoomi Dwarka","Gandhinagar","Gir Somnath","Jamnagar","Junagadh","Kheda","Kutch","Mahisagar","Mehsana","Morbi","Narmada","Navsari","Panchmahal","Patan","Porbandar","Rajkot","Sabarkantha","Surat","Surendranagar","Tapi","Vadodara","Valsad"],
+  "Haryana": ["Ambala","Bhiwani","Charkhi Dadri","Faridabad","Fatehabad","Gurugram","Hisar","Jhajjar","Jind","Kaithal","Karnal","Kurukshetra","Mahendragarh","Nuh","Palwal","Panchkula","Panipat","Rewari","Rohtak","Sirsa","Sonipat","Yamunanagar"],
+  "Himachal Pradesh": ["Bilaspur","Chamba","Hamirpur","Kangra","Kinnaur","Kullu","Lahaul and Spiti","Mandi","Shimla","Sirmaur","Solan","Una"],
+  "Jharkhand": ["Bokaro","Chatra","Deoghar","Dhanbad","Dumka","East Singhbhum","Garhwa","Giridih","Godda","Gumla","Hazaribagh","Jamtara","Khunti","Koderma","Latehar","Lohardaga","Pakur","Palamu","Ramgarh","Ranchi","Sahebganj","Seraikela Kharsawan","Simdega","West Singhbhum"],
+  "Karnataka": ["Bagalkote","Ballari","Belagavi","Bengaluru Rural","Bengaluru Urban","Bidar","Chamarajanagara","Chikkaballapura","Chikkamagaluru","Chitradurga","Dakshina Kannada","Davanagere","Dharwad","Gadag","Hassan","Haveri","Kalaburagi","Kodagu","Kolar","Koppal","Mandya","Mysuru","Raichur","Ramanagara","Shivamogga","Tumakuru","Udupi","Uttara Kannada","Vijayapura","Yadgir"],
+  "Kerala": ["Alappuzha","Ernakulam","Idukki","Kannur","Kasaragod","Kollam","Kottayam","Kozhikode","Malappuram","Palakkad","Pathanamthitta","Thiruvananthapuram","Thrissur","Wayanad"],
+  "Madhya Pradesh": ["Agar Malwa","Alirajpur","Anuppur","Ashoknagar","Balaghat","Barwani","Betul","Bhind","Bhopal","Burhanpur","Chhatarpur","Chhindwara","Damoh","Datia","Dewas","Dhar","Dindori","Guna","Gwalior","Harda","Hoshangabad","Indore","Jabalpur","Jhabua","Katni","Khandwa","Khargone","Maihar","Mandla","Mandsaur","Morena","Narsinghpur","Neemuch","Niwari","Panna","Raisen","Rajgarh","Ratlam","Rewa","Sagar","Satna","Sehore","Seoni","Shahdol","Shajapur","Sheopur","Shivpuri","Sidhi","Singrauli","Tikamgarh","Ujjain","Umaria","Vidisha"],
+  "Maharashtra": ["Ahmednagar","Akola","Amravati","Aurangabad","Beed","Bhandara","Buldhana","Chandrapur","Dhule","Gadchiroli","Gondia","Hingoli","Jalgaon","Jalna","Kolhapur","Latur","Mumbai City","Mumbai Suburban","Nagpur","Nanded","Nandurbar","Nashik","Osmanabad","Palghar","Parbhani","Pune","Raigad","Ratnagiri","Sangli","Satara","Sindhudurg","Solapur","Thane","Wardha","Washim","Yavatmal"],
+  "Manipur": ["Bishnupur","Chandel","Churachandpur","Imphal East","Imphal West","Jiribam","Kakching","Kamjong","Kangpokpi","Noney","Pherzawl","Senapati","Tamenglong","Tengnoupal","Thoubal","Ukhrul"],
+  "Meghalaya": ["East Garo Hills","East Jaintia Hills","East Khasi Hills","Eastern West Khasi Hills","North Garo Hills","Ri Bhoi","South Garo Hills","South West Garo Hills","South West Khasi Hills","West Garo Hills","West Jaintia Hills","West Khasi Hills"],
+  "Mizoram": ["Aizawl","Champhai","Hnahthial","Khawzawl","Kolasib","Lawngtlai","Lunglei","Mamit","Saitual","Serchhip"],
+  "Nagaland": ["Chumoukedima","Dimapur","Kiphire","Kohima","Longleng","Mokokchung","Mon","Noklak","Peren","Phek","Tseminyu","Tuensang","Wokha","Zunheboto"],
+  "Odisha": ["Angul","Balangir","Balasore","Bargarh","Bhadrak","Boudh","Cuttack","Deogarh","Dhenkanal","Gajapati","Ganjam","Jagatsinghpur","Jajpur","Jharsuguda","Kalahandi","Kandhamal","Kendrapara","Kendujhar","Khordha","Koraput","Malkangiri","Mayurbhanj","Nabarangpur","Nayagarh","Nuapada","Puri","Rayagada","Sambalpur","Subarnapur","Sundargarh"],
+  "Punjab": ["Amritsar","Barnala","Bathinda","Faridkot","Fatehgarh Sahib","Fazilka","Ferozepur","Gurdaspur","Hoshiarpur","Jalandhar","Kapurthala","Ludhiana","Malerkotla","Mansa","Moga","Mohali","Muktsar","Pathankot","Patiala","Rupnagar","Sangrur","Shaheed Bhagat Singh Nagar","Tarn Taran"],
+  "Rajasthan": ["Ajmer","Alwar","Anupgarh","Balotra","Banswara","Baran","Barmer","Beawar","Bharatpur","Bhilwara","Bikaner","Bundi","Chittorgarh","Churu","Dausa","Deeg","Dholpur","Didwana-Kuchaman","Dudu","Dungarpur","Gangapur City","Hanumangarh","Jaipur","Jaipur Rural","Jaisalmer","Jalore","Jhalawar","Jhunjhunu","Jodhpur","Jodhpur Rural","Karauli","Kekri","Khairthal-Tijara","Kotputli-Behror","Kota","Nagaur","Neem Ka Thana","Pali","Phalodi","Pratapgarh","Rajsamand","Salumbar","Sanchore","Sawai Madhopur","Shahpura","Sikar","Sirohi","Sri Ganganagar","Tonk","Udaipur"],
+  "Sikkim": ["East Sikkim","North Sikkim","Pakyong","Soreng","South Sikkim","West Sikkim"],
+  "Tamil Nadu": ["Ariyalur","Chengalpattu","Chennai","Coimbatore","Cuddalore","Dharmapuri","Dindigul","Erode","Kallakurichi","Kancheepuram","Kanyakumari","Karur","Krishnagiri","Madurai","Mayiladuthurai","Nagapattinam","Namakkal","Nilgiris","Perambalur","Pudukkottai","Ramanathapuram","Ranipet","Salem","Sivaganga","Tenkasi","Thanjavur","Theni","Thoothukudi","Tiruchirappalli","Tirunelveli","Tirupathur","Tiruppur","Tiruvallur","Tiruvannamalai","Tiruvarur","Vellore","Viluppuram","Virudhunagar"],
+  "Telangana": ["Adilabad","Bhadradri Kothagudem","Hanamkonda","Hyderabad","Jagtial","Jangaon","Jayashankar Bhupalpally","Jogulamba Gadwal","Kamareddy","Karimnagar","Khammam","Komaram Bheem","Mahabubabad","Mahabubnagar","Mancherial","Medak","Medchal-Malkajgiri","Mulugu","Nagarkurnool","Nalgonda","Narayanpet","Nirmal","Nizamabad","Peddapalli","Rajanna Sircilla","Rangareddy","Sangareddy","Siddipet","Suryapet","Vikarabad","Wanaparthy","Warangal","Yadadri Bhuvanagiri"],
+  "Tripura": ["Dhalai","Gomati","Khowai","North Tripura","Sepahijala","Sipahijala","South Tripura","Unakoti","West Tripura"],
+  "Uttar Pradesh": ["Agra","Aligarh","Ambedkar Nagar","Amethi","Amroha","Auraiya","Ayodhya","Azamgarh","Badaun","Baghpat","Bahraich","Ballia","Balrampur","Banda","Barabanki","Bareilly","Basti","Bhadohi","Bijnor","Budaun","Bulandshahr","Chandauli","Chitrakoot","Deoria","Etah","Etawah","Farrukhabad","Fatehpur","Firozabad","Gautam Buddha Nagar","Ghaziabad","Ghazipur","Gonda","Gorakhpur","Hamirpur","Hapur","Hardoi","Hathras","Jalaun","Jaunpur","Jhansi","Kannauj","Kanpur Dehat","Kanpur Nagar","Kasganj","Kaushambi","Kheri","Kushinagar","Lalitpur","Lucknow","Maharajganj","Mahoba","Mainpuri","Mathura","Mau","Meerut","Mirzapur","Moradabad","Muzaffarnagar","Pilibhit","Pratapgarh","Prayagraj","Raebareli","Rampur","Saharanpur","Sambhal","Sant Kabir Nagar","Shahjahanpur","Shamli","Shravasti","Siddharthnagar","Sitapur","Sonbhadra","Sultanpur","Unnao","Varanasi"],
+  "Uttarakhand": ["Almora","Bageshwar","Chamoli","Champawat","Dehradun","Haridwar","Nainital","Pauri Garhwal","Pithoragarh","Rudraprayag","Tehri Garhwal","Udham Singh Nagar","Uttarkashi"],
+  "West Bengal": ["Alipurduar","Bankura","Birbhum","Cooch Behar","Dakshin Dinajpur","Darjeeling","Hooghly","Howrah","Jalpaiguri","Jhargram","Kalimpong","Kolkata","Malda","Murshidabad","Nadia","North 24 Parganas","Paschim Bardhaman","Paschim Medinipur","Purba Bardhaman","Purba Medinipur","Purulia","South 24 Parganas","Uttar Dinajpur"],
+  // Union Territories
+  "Andaman and Nicobar Islands": ["Nicobar","North and Middle Andaman","South Andaman"],
+  "Chandigarh": ["Chandigarh"],
+  "Dadra and Nagar Haveli and Daman and Diu": ["Dadra and Nagar Haveli","Daman","Diu"],
+  "Delhi": ["Central Delhi","East Delhi","New Delhi","North Delhi","North East Delhi","North West Delhi","Shahdara","South Delhi","South East Delhi","South West Delhi","West Delhi"],
+  "Jammu and Kashmir": ["Anantnag","Bandipora","Baramulla","Budgam","Doda","Ganderbal","Jammu","Kathua","Kishtwar","Kulgam","Kupwara","Poonch","Pulwama","Rajouri","Ramban","Reasi","Samba","Shopian","Srinagar","Udhampur"],
+  "Ladakh": ["Kargil","Leh"],
+  "Lakshadweep": ["Lakshadweep"],
+  "Puducherry": ["Karaikal","Mahe","Puducherry","Yanam"],
+};
+
+const INDIA_STATE_NAMES = Object.keys(INDIA_STATES_DISTRICTS).sort();
 
 // ── Payment method badge helper ───────────────────────────────────
 function PaymentBadge({ method }) {
@@ -334,7 +379,6 @@ export default function AdminDashboard({ onChoosePlan }) {
     </span>
   );
 
-  // Count upcoming follow-ups (today or future)
   const followUpPatients = patients.filter((p) => p.followUpDate && p.followUpDate >= todayStr);
 
   const navItems = [
@@ -377,9 +421,8 @@ function Overview({ clinic, doctors, todayPatients, paidTotal, duesTotal }) {
   return (
     <div>
       <SectionHeader title="Clinic Overview" subtitle={`Today's summary — ${today()}`} />
-      {/* ── REMOVED: Total Doctors stat card ── */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(175px,1fr))', gap:16, marginBottom:24 }}>
-        <Stat label="Today's Tokens"     value={todayPatients.length}       icon="🎫" color="var(--primary)" />
+        <Stat label="Today's Tokens"      value={todayPatients.length}       icon="🎫" color="var(--primary)" />
         <Stat label="Today's Revenue Rs." value={paidTotal.toLocaleString()} icon="💰" color="var(--success)" />
         <Stat label="Pending Dues Rs."    value={duesTotal.toLocaleString()} icon="⚠️" color="var(--danger)" />
       </div>
@@ -465,7 +508,6 @@ function Overview({ clinic, doctors, todayPatients, paidTotal, duesTotal }) {
 /* ── Admin Follow-ups ─────────────────────────────────────────────────────── */
 function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
   const todayStr = new Date().toISOString().split('T')[0];
-
   const [doctorFilter, setDoctorFilter] = useState('all');
   const [dateFilter,   setDateFilter]   = useState('upcoming');
   const [search,       setSearch]       = useState('');
@@ -474,7 +516,6 @@ function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
   const [editNote,     setEditNote]     = useState('');
   const [busy,         setBusy]         = useState(false);
 
-  // Only patients that have a follow-up date set
   const followUpPatients = patients.filter((p) => p.followUpDate);
 
   const filtered = followUpPatients.filter((p) => {
@@ -490,59 +531,36 @@ function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
     return matchDoctor && matchSearch && matchDate;
   }).sort((a, b) => (a.followUpDate || '').localeCompare(b.followUpDate || ''));
 
-  function startEdit(p) {
-    setEditingId(p._id);
-    setEditDate(p.followUpDate || '');
-    setEditNote(p.followUpNote || '');
-  }
-
-  function cancelEdit() {
-    setEditingId(null);
-    setEditDate('');
-    setEditNote('');
-  }
+  function startEdit(p) { setEditingId(p._id); setEditDate(p.followUpDate || ''); setEditNote(p.followUpNote || ''); }
+  function cancelEdit() { setEditingId(null); setEditDate(''); setEditNote(''); }
 
   async function saveEdit(patientId) {
     setBusy(true);
-    try {
-      await onUpdateFollowUp(patientId, editDate, editNote);
-      setEditingId(null);
-    } catch (e) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
+    try { await onUpdateFollowUp(patientId, editDate, editNote); setEditingId(null); }
+    catch (e) { alert(e.message); }
+    finally { setBusy(false); }
   }
 
   async function clearFollowUp(patientId) {
     if (!window.confirm('Clear this follow-up?')) return;
-    try {
-      await onUpdateFollowUp(patientId, null, '');
-    } catch (e) {
-      alert(e.message);
-    }
+    try { await onUpdateFollowUp(patientId, null, ''); }
+    catch (e) { alert(e.message); }
   }
 
   function getFollowUpStatus(followUpDate) {
     if (!followUpDate) return null;
-    if (followUpDate < todayStr)  return { label: 'Overdue',  color: 'red',    bg: 'rgba(231,76,60,0.08)',   text: '#e74c3c' };
-    if (followUpDate === todayStr) return { label: 'Today',    color: 'green',  bg: 'rgba(0,184,148,0.10)',   text: '#00a878' };
-    return                               { label: 'Upcoming', color: 'blue',   bg: 'rgba(21,101,168,0.08)', text: '#1565a8' };
+    if (followUpDate < todayStr)   return { label: 'Overdue',  bg: 'rgba(231,76,60,0.08)',   text: '#e74c3c' };
+    if (followUpDate === todayStr) return { label: 'Today',    bg: 'rgba(0,184,148,0.10)',   text: '#00a878' };
+    return                                { label: 'Upcoming', bg: 'rgba(21,101,168,0.08)', text: '#1565a8' };
   }
 
-  // Summary counts
   const todayCount    = followUpPatients.filter((p) => p.followUpDate === todayStr).length;
   const upcomingCount = followUpPatients.filter((p) => p.followUpDate > todayStr).length;
   const overdueCount  = followUpPatients.filter((p) => p.followUpDate < todayStr).length;
 
   return (
     <div>
-      <SectionHeader
-        title="Follow-ups"
-        subtitle={`${followUpPatients.length} patients with scheduled follow-ups`}
-      />
-
-      {/* ── Summary Strip ── */}
+      <SectionHeader title="Follow-ups" subtitle={`${followUpPatients.length} patients with scheduled follow-ups`} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 20 }}>
         {[
           { label: 'Today',    value: todayCount,    icon: '📅', color: '#00a878', bg: 'rgba(0,184,148,0.08)',   border: 'rgba(0,184,148,0.20)',   filter: 'today'    },
@@ -550,13 +568,8 @@ function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
           { label: 'Overdue',  value: overdueCount,  icon: '⚠️', color: '#e74c3c', bg: 'rgba(231,76,60,0.07)',  border: 'rgba(231,76,60,0.18)',   filter: 'overdue'  },
           { label: 'All',      value: followUpPatients.length, icon: '📋', color: '#4a6278', bg: 'rgba(74,98,120,0.06)', border: 'rgba(74,98,120,0.15)', filter: 'all' },
         ].map((s) => (
-          <div
-            key={s.label}
-            onClick={() => setDateFilter(s.filter)}
-            style={{ background: dateFilter === s.filter ? s.bg : '#fff', border: `1.5px solid ${dateFilter === s.filter ? s.border : 'var(--border, #e4eaf1)'}`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 12 }}
-            onMouseEnter={(e) => { if (dateFilter !== s.filter) e.currentTarget.style.borderColor = s.border; }}
-            onMouseLeave={(e) => { if (dateFilter !== s.filter) e.currentTarget.style.borderColor = 'var(--border, #e4eaf1)'; }}
-          >
+          <div key={s.label} onClick={() => setDateFilter(s.filter)}
+            style={{ background: dateFilter === s.filter ? s.bg : '#fff', border: `1.5px solid ${dateFilter === s.filter ? s.border : 'var(--border, #e4eaf1)'}`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.15s', display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 22 }}>{s.icon}</span>
             <div>
               <div style={{ fontWeight: 800, fontSize: 20, color: dateFilter === s.filter ? s.color : 'var(--text, #1a2a3a)', lineHeight: 1 }}>{s.value}</div>
@@ -566,33 +579,16 @@ function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
         ))}
       </div>
 
-      {/* ── Filters Row ── */}
       <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap', alignItems: 'center' }}>
-        <Input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search patient name or phone…"
-          style={{ flex: '1 1 200px', minWidth: 0 }}
-        />
-        <Select
-          value={doctorFilter}
-          onChange={(e) => setDoctorFilter(e.target.value)}
-          style={{ flex: '0 0 180px' }}
-        >
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search patient name or phone…" style={{ flex: '1 1 200px', minWidth: 0 }} />
+        <Select value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)} style={{ flex: '0 0 180px' }}>
           <option value="all">All Doctors</option>
-          {doctors.map((d) => (
-            <option key={d._id} value={d._id}>{d.name}</option>
-          ))}
+          {doctors.map((d) => <option key={d._id} value={d._id}>{d.name}</option>)}
         </Select>
       </div>
 
-      {/* ── Table / Empty ── */}
       {filtered.length === 0 ? (
-        <Empty
-          icon="📅"
-          title="No follow-ups found"
-          desc={dateFilter === 'overdue' ? 'No overdue follow-ups.' : dateFilter === 'today' ? 'No follow-ups scheduled for today.' : 'No follow-ups match your filters.'}
-        />
+        <Empty icon="📅" title="No follow-ups found" desc={dateFilter === 'overdue' ? 'No overdue follow-ups.' : dateFilter === 'today' ? 'No follow-ups scheduled for today.' : 'No follow-ups match your filters.'} />
       ) : (
         <Card noPad>
           <div style={{ overflowX: 'auto' }}>
@@ -610,50 +606,34 @@ function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
                   const isEditing = editingId === p._id;
                   return (
                     <tr key={p._id} style={{ borderBottom: '1px solid var(--border)', background: isEditing ? 'rgba(21,101,168,0.03)' : (i % 2 === 0 ? '#fff' : 'var(--surface2, #fafbfc)') }}>
-                      {/* Patient */}
                       <td style={{ padding: '11px 14px' }}>
-                        <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>{p.name}</div>
+                        <div style={{ fontWeight: 700, fontSize: 13.5 }}>{p.name}</div>
                         {p.age && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>Age {p.age}{p.gender ? ` · ${p.gender}` : ''}</div>}
                       </td>
-                      {/* Phone */}
                       <td style={{ padding: '11px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{p.phone || '—'}</td>
-                      {/* Doctor */}
                       <td style={{ padding: '11px 14px' }}>
                         <div style={{ fontWeight: 600, color: '#1565a8', fontSize: 13 }}>{p.doctorName}</div>
                         {p.specialist && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{p.specialist}</div>}
                       </td>
-                      {/* Last Visit */}
                       <td style={{ padding: '11px 14px', color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 12.5 }}>{p.date || '—'}</td>
-                      {/* Follow-up Date */}
                       <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                         {isEditing ? (
-                          <input
-                            type="date"
-                            value={editDate}
-                            onChange={(e) => setEditDate(e.target.value)}
-                            style={{ padding: '4px 8px', borderRadius: 7, border: '1.5px solid #1565a8', fontSize: 13, color: '#0a3d62', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }}
-                          />
+                          <input type="date" value={editDate} onChange={(e) => setEditDate(e.target.value)}
+                            style={{ padding: '4px 8px', borderRadius: 7, border: '1.5px solid #1565a8', fontSize: 13, color: '#0a3d62', fontWeight: 600, fontFamily: 'inherit', outline: 'none' }} />
                         ) : (
                           <span style={{ fontWeight: 700, color: st?.text || 'var(--text)', fontSize: 13 }}>{p.followUpDate || '—'}</span>
                         )}
                       </td>
-                      {/* Note */}
                       <td style={{ padding: '11px 14px', maxWidth: 160 }}>
                         {isEditing ? (
-                          <input
-                            type="text"
-                            value={editNote}
-                            onChange={(e) => setEditNote(e.target.value)}
-                            placeholder="Note (optional)"
-                            style={{ width: '100%', padding: '4px 8px', borderRadius: 7, border: '1.5px solid #1565a8', fontSize: 13, color: '#0a3d62', fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }}
-                          />
+                          <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value)} placeholder="Note (optional)"
+                            style={{ width: '100%', padding: '4px 8px', borderRadius: 7, border: '1.5px solid #1565a8', fontSize: 13, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box' }} />
                         ) : (
                           <span style={{ color: p.followUpNote ? 'var(--text)' : 'var(--text-muted)', fontStyle: p.followUpNote ? 'normal' : 'italic', fontSize: 12.5, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {p.followUpNote || 'No note'}
                           </span>
                         )}
                       </td>
-                      {/* Status */}
                       <td style={{ padding: '11px 14px' }}>
                         {st && (
                           <span style={{ background: st.bg, color: st.text, border: `1px solid ${st.text}30`, borderRadius: 20, padding: '3px 10px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -661,31 +641,25 @@ function AdminFollowUps({ patients, doctors, onUpdateFollowUp }) {
                           </span>
                         )}
                       </td>
-                      {/* Actions */}
                       <td style={{ padding: '11px 14px', whiteSpace: 'nowrap' }}>
                         {isEditing ? (
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              onClick={() => saveEdit(p._id)}
-                              disabled={busy}
+                            <button onClick={() => saveEdit(p._id)} disabled={busy}
                               style={{ padding: '4px 12px', borderRadius: 7, border: 'none', background: '#00b894', color: '#fff', fontSize: 12, fontWeight: 700, cursor: busy ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>
                               {busy ? '…' : '✓ Save'}
                             </button>
-                            <button
-                              onClick={cancelEdit}
+                            <button onClick={cancelEdit}
                               style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid #d0dce8', background: '#fff', color: '#4a6278', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                               Cancel
                             </button>
                           </div>
                         ) : (
                           <div style={{ display: 'flex', gap: 6 }}>
-                            <button
-                              onClick={() => startEdit(p)}
+                            <button onClick={() => startEdit(p)}
                               style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(21,101,168,0.25)', background: 'rgba(21,101,168,0.06)', color: '#1565a8', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                               ✏️ Edit
                             </button>
-                            <button
-                              onClick={() => clearFollowUp(p._id)}
+                            <button onClick={() => clearFollowUp(p._id)}
                               style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(231,76,60,0.25)', background: 'rgba(231,76,60,0.06)', color: '#e74c3c', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                               🗑
                             </button>
@@ -709,7 +683,6 @@ function DoctorDetailModal({ doc, patients, onClose, onUpdateTokenLimit }) {
   const todayStr    = new Date().toISOString().split('T')[0];
   const allDocPat   = patients.filter((p) => String(p.doctorId) === String(doc._id));
   const todayDocPat = allDocPat.filter((p) => p.date === todayStr).sort((a, b) => a.token - b.token);
-
   const waiting  = todayDocPat.filter((p) => p.status === 'waiting').length;
   const called   = todayDocPat.filter((p) => p.status === 'called').length;
   const done     = todayDocPat.filter((p) => p.status === 'done').length;
@@ -798,7 +771,6 @@ function DoctorDetailModal({ doc, patients, onClose, onUpdateTokenLimit }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 14, color: p.status === 'done' ? 'var(--text-muted)' : 'var(--text)', textDecoration: p.status === 'done' ? 'line-through' : 'none', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
                 <div style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.symptoms} · 🕐 {p.time}</div>
-                {(p.age || p.phone) && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{p.age ? `Age: ${p.age}` : ''}{p.age && p.phone ? ' · ' : ''}{p.phone ? `📞 ${p.phone}` : ''}</div>}
               </div>
               <div style={{ textAlign: 'right', flexShrink: 0 }}>
                 <div style={{ fontSize: 12, color: '#00a878', fontWeight: 700 }}>+Rs.{p.paid || 0}</div>
@@ -828,16 +800,11 @@ function DoctorManagement({ doctors, patients, onAdd, onDelete, onUpdateTokenLim
   const [detailDoc, setDetailDoc] = useState(null);
   const [err,       setErr]       = useState('');
   const [busy,      setBusy]      = useState(false);
-  const [form,      setForm]      = useState({
-    name:'', specialist:'', phone:'', email:'', password:'', fee:'',
-    schedule: defaultSchedule(),
-  });
+  const [form,      setForm]      = useState({ name:'', specialist:'', phone:'', email:'', password:'', fee:'', schedule: defaultSchedule() });
   const f = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
   async function addDoctor() {
-    if (!form.name || !form.email || !form.password || !form.specialist) {
-      setErr('Fill all required fields.'); return;
-    }
+    if (!form.name || !form.email || !form.password || !form.specialist) { setErr('Fill all required fields.'); return; }
     setBusy(true); setErr('');
     try {
       await onAdd({ role: 'doctor', ...form, fee: parseFloat(form.fee) || 0 });
@@ -849,48 +816,24 @@ function DoctorManagement({ doctors, patients, onAdd, onDelete, onUpdateTokenLim
 
   async function removeDoctor(id) {
     if (!window.confirm('Remove this doctor?')) return;
-    try { await onDelete(id); }
-    catch(e) { alert(e.message); }
+    try { await onDelete(id); } catch(e) { alert(e.message); }
   }
 
-  const syncedDetailDoc = detailDoc
-    ? doctors.find((d) => d._id === detailDoc._id) || detailDoc
-    : null;
+  const syncedDetailDoc = detailDoc ? doctors.find((d) => d._id === detailDoc._id) || detailDoc : null;
 
   return (
     <div>
-      <SectionHeader
-        title="Doctors"
-        subtitle={`${doctors.length} doctors registered`}
-        action={<Btn onClick={() => setShow(true)}>+ Add Doctor</Btn>}
-      />
-
+      <SectionHeader title="Doctors" subtitle={`${doctors.length} doctors registered`} action={<Btn onClick={() => setShow(true)}>+ Add Doctor</Btn>} />
       {doctors.length === 0 ? (
-        <Empty icon="👨‍⚕️" title="No doctors yet" desc="Add your first doctor to get started."
-          action={<Btn onClick={() => setShow(true)}>+ Add First Doctor</Btn>} />
+        <Empty icon="👨‍⚕️" title="No doctors yet" desc="Add your first doctor to get started." action={<Btn onClick={() => setShow(true)}>+ Add First Doctor</Btn>} />
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))', gap:16 }}>
           {doctors.map((doc) => (
-            <DoctorCard
-              key={doc._id}
-              doc={doc}
-              onRemove={(e) => { e.stopPropagation(); removeDoctor(doc._id); }}
-              onClick={() => setDetailDoc(doc)}
-              onUpdateTokenLimit={onUpdateTokenLimit}
-            />
+            <DoctorCard key={doc._id} doc={doc} onRemove={(e) => { e.stopPropagation(); removeDoctor(doc._id); }} onClick={() => setDetailDoc(doc)} onUpdateTokenLimit={onUpdateTokenLimit} />
           ))}
         </div>
       )}
-
-      {syncedDetailDoc && (
-        <DoctorDetailModal
-          doc={syncedDetailDoc}
-          patients={patients}
-          onClose={() => setDetailDoc(null)}
-          onUpdateTokenLimit={onUpdateTokenLimit}
-        />
-      )}
-
+      {syncedDetailDoc && <DoctorDetailModal doc={syncedDetailDoc} patients={patients} onClose={() => setDetailDoc(null)} onUpdateTokenLimit={onUpdateTokenLimit} />}
       {show && (
         <Modal title="Add New Doctor" onClose={() => { setShow(false); setErr(''); }}>
           <div style={{ display:'grid', gap:14 }}>
@@ -929,33 +872,23 @@ function DoctorManagement({ doctors, patients, onAdd, onDelete, onUpdateTokenLim
 function DoctorCard({ doc, onRemove, onClick, onUpdateTokenLimit }) {
   const [hovered, setHovered] = useState(false);
   const limit = doc.dailyTokenLimit ?? 0;
-
   return (
-    <div
-      role="button" tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => e.key === 'Enter' && onClick()}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ background: '#fff', borderRadius: 14, border: hovered ? '1.5px solid #1565a8' : '1.5px solid var(--border, #e4eaf1)', padding: '16px 16px 14px', cursor: 'pointer', position: 'relative', transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s', transform: hovered ? 'translateY(-3px)' : 'translateY(0)', boxShadow: hovered ? '0 8px 28px rgba(10,61,98,0.14)' : '0 1px 4px rgba(0,0,0,0.06)', userSelect: 'none' }}
-    >
+    <div role="button" tabIndex={0} onClick={onClick} onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
+      style={{ background: '#fff', borderRadius: 14, border: hovered ? '1.5px solid #1565a8' : '1.5px solid var(--border, #e4eaf1)', padding: '16px 16px 14px', cursor: 'pointer', position: 'relative', transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s', transform: hovered ? 'translateY(-3px)' : 'translateY(0)', boxShadow: hovered ? '0 8px 28px rgba(10,61,98,0.14)' : '0 1px 4px rgba(0,0,0,0.06)', userSelect: 'none' }}>
       {hovered && (
         <div style={{ position: 'absolute', top: -1, left: 0, right: 0, background: 'linear-gradient(90deg,#0a3d62,#1565a8)', color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 0', borderRadius: '12px 12px 0 0', textAlign: 'center', letterSpacing: 0.3, pointerEvents: 'none', zIndex: 1 }}>
           👁 Click to view full details
         </div>
       )}
-
       <div style={{ display:'flex', alignItems:'flex-start', gap:12, marginBottom:12, marginTop: hovered ? 18 : 0, transition:'margin-top 0.15s' }}>
         <div style={{ width:48, height:48, borderRadius:12, background:'var(--primary-light, rgba(21,101,168,0.10))', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, flexShrink:0 }}>👨‍⚕️</div>
         <div style={{ flex:1, minWidth:0 }}>
           <div style={{ fontWeight:700, fontSize:15, marginBottom:4, color: hovered ? '#1565a8' : 'var(--text, #1a2a3a)', textDecoration: hovered ? 'underline' : 'none', transition: 'color 0.15s' }}>{doc.name}</div>
           <Badge color="blue">{doc.specialist}</Badge>
         </div>
-        <button onClick={(e) => { e.stopPropagation(); onRemove(e); }}
-          style={{ background:'none', border:'none', cursor:'pointer', color:'var(--danger,#e74c3c)', fontSize:16, padding:4, flexShrink:0, lineHeight:1 }}
-          title="Remove doctor">🗑</button>
+        <button onClick={(e) => { e.stopPropagation(); onRemove(e); }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--danger,#e74c3c)', fontSize:16, padding:4, flexShrink:0, lineHeight:1 }} title="Remove doctor">🗑</button>
       </div>
-
       <div style={{ display:'grid', gap:6, fontSize:13 }}>
         {doc.phone && <div style={{ color:'var(--text-muted,#6b8299)' }}>📞 {doc.phone}</div>}
         {doc.email && <div style={{ color:'var(--text-muted,#6b8299)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>✉️ {doc.email}</div>}
@@ -965,7 +898,6 @@ function DoctorCard({ doc, onRemove, onClick, onUpdateTokenLimit }) {
         </div>
         <ScheduleDisplay schedule={doc.schedule} />
       </div>
-
       <div style={{ marginTop:10, paddingTop:10, borderTop:'1px solid var(--border,#e4eaf1)', fontSize:12, color:'var(--text-light,#9ab0c4)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
         <span>Added {doc.addedAt}</span>
         <span style={{ color: hovered ? '#1565a8' : 'var(--text-light,#9ab0c4)', fontWeight: hovered ? 600 : 400, fontSize:11, transition:'color 0.15s' }}>
@@ -997,16 +929,14 @@ function ReceptionistManagement({ receptionists, onAdd, onDelete }) {
 
   async function removeRec(id) {
     if (!window.confirm('Remove this receptionist?')) return;
-    try { await onDelete(id); }
-    catch(e) { alert(e.message); }
+    try { await onDelete(id); } catch(e) { alert(e.message); }
   }
 
   return (
     <div>
       <SectionHeader title="Receptionists" subtitle={`${receptionists.length} receptionists registered`} action={<Btn onClick={() => setShow(true)}>+ Add Receptionist</Btn>} />
       {receptionists.length === 0 ? (
-        <Empty icon="📋" title="No receptionists yet" desc="Add a receptionist to handle patient registration."
-          action={<Btn onClick={() => setShow(true)}>+ Add Receptionist</Btn>} />
+        <Empty icon="📋" title="No receptionists yet" desc="Add a receptionist to handle patient registration." action={<Btn onClick={() => setShow(true)}>+ Add Receptionist</Btn>} />
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))', gap:16 }}>
           {receptionists.map((rec) => (
@@ -1028,7 +958,6 @@ function ReceptionistManagement({ receptionists, onAdd, onDelete }) {
           ))}
         </div>
       )}
-
       {show && (
         <Modal title="Add Receptionist" onClose={() => { setShow(false); setErr(''); }}>
           <div style={{ display:'grid', gap:14 }}>
@@ -1051,32 +980,22 @@ function ReceptionistManagement({ receptionists, onAdd, onDelete }) {
 }
 
 /* ── All Patients ─────────────────────────────────────────────── */
-
 export function AllPatients({ patients }) {
   const [search, setSearch] = useState('');
   const [dateFilter, setDateFilter] = useState('today');
-
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // 🔍 Filter patients
   const filtered = patients
     .filter((p) => {
-      const matchDate =
-        dateFilter === 'all' || p.date === todayStr;
-
-      const matchSearch =
-        !search ||
-        p.name.toLowerCase().includes(search.toLowerCase()) ||
-        String(p.token).includes(search);
-
+      const matchDate = dateFilter === 'all' || p.date === todayStr;
+      const matchSearch = !search || p.name.toLowerCase().includes(search.toLowerCase()) || String(p.token).includes(search);
       return matchDate && matchSearch;
     })
     .sort((a, b) => {
       if (a.date !== b.date) return b.date.localeCompare(a.date);
-      return new Date(b.createdAt) - new Date(a.createdAt); 
+      return new Date(b.createdAt) - new Date(a.createdAt);
     });
 
-  // 👨‍⚕️ Group by doctor
   const grouped = filtered.reduce((acc, p) => {
     if (!acc[p.doctorName]) acc[p.doctorName] = [];
     acc[p.doctorName].push(p);
@@ -1090,227 +1009,51 @@ export function AllPatients({ patients }) {
         subtitle={`${patients.length} total patients`}
         action={
           <div style={{ display: 'flex', gap: 10 }}>
-            <Input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search name or token..."
-              style={{ width: 200 }}
-            />
-            <Select
-              value={dateFilter}
-              onChange={(e) => setDateFilter(e.target.value)}
-              style={{ width: 130 }}
-            >
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search name or token..." style={{ width: 200 }} />
+            <Select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} style={{ width: 130 }}>
               <option value="today">Today</option>
               <option value="all">All Time</option>
             </Select>
           </div>
         }
       />
-
       {Object.keys(grouped).length === 0 ? (
-        <Card>
-          <div
-            style={{
-              padding: '3rem',
-              textAlign: 'center',
-              color: 'var(--text-muted)',
-            }}
-          >
-            No patients found
-          </div>
-        </Card>
+        <Card><div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>No patients found</div></Card>
       ) : (
         Object.entries(grouped).map(([doctorName, pats]) => {
-          const sortedPatients = pats.sort(
-            (a, b) =>
-              new Date(b.createdAt) - new Date(a.createdAt)
-          );
-
+          const sortedPatients = pats.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
           return (
             <div key={doctorName} style={{ marginBottom: 24 }}>
-              
-              {/* 👨‍⚕️ Doctor Header */}
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  marginBottom: 12,
-                  padding: '10px 16px',
-                  background: 'var(--primary-light)',
-                  borderRadius: 10,
-                  flexWrap: 'wrap',
-                }}
-              >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12, padding: '10px 16px', background: 'var(--primary-light)', borderRadius: 10, flexWrap: 'wrap' }}>
                 <span style={{ fontSize: 18 }}>👨‍⚕️</span>
-                <span style={{ fontWeight: 700, fontSize: 15 }}>
-                  {doctorName}
-                </span>
-                <Badge color="blue">
-                  {sortedPatients.length} patients
-                </Badge>
+                <span style={{ fontWeight: 700, fontSize: 15 }}>{doctorName}</span>
+                <Badge color="blue">{sortedPatients.length} patients</Badge>
               </div>
-
-              {/* 📋 Table */}
               <Card noPad>
                 <div style={{ overflowX: 'auto' }}>
-                  <table
-                    style={{
-                      width: '100%',
-                      borderCollapse: 'collapse',
-                      fontSize: 13,
-                    }}
-                  >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                     <thead>
                       <tr style={{ background: 'var(--surface2)' }}>
-                        {[
-                          'Token',
-                          'Name',
-                          'Age',
-                          'Phone',
-                          'Symptoms',
-                          'Paid Rs.',
-                          'Dues Rs.',
-                          'Payment',
-                          'Date',
-                          'Time',
-                          'Status',
-                        ].map((h) => (
-                          <th
-                            key={h}
-                            style={{
-                              padding: '12px 14px',
-                              textAlign: 'left',
-                              fontWeight: 600,
-                              color: 'var(--text-muted)',
-                              whiteSpace: 'nowrap',
-                              borderBottom:
-                                '1px solid var(--border)',
-                            }}
-                          >
-                            {h}
-                          </th>
+                        {['Token','Name','Age','Phone','Symptoms','Paid Rs.','Dues Rs.','Payment','Date','Time','Status'].map((h) => (
+                          <th key={h} style={{ padding: '12px 14px', textAlign: 'left', fontWeight: 600, color: 'var(--text-muted)', whiteSpace: 'nowrap', borderBottom: '1px solid var(--border)' }}>{h}</th>
                         ))}
                       </tr>
                     </thead>
-
                     <tbody>
                       {sortedPatients.map((p) => (
-                        <tr
-                          key={p._id}
-                          style={{
-                            borderBottom:
-                              '1px solid var(--border)',
-                          }}
-                        >
+                        <tr key={p._id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '10px 14px' }}><TokenBadge token={p.token} size="sm" status={p.status} /></td>
+                          <td style={{ padding: '10px 14px', fontWeight: 500 }}>{p.name}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.age || '-'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.phone || '-'}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.symptoms}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--success)', fontWeight: 500 }}>{p.paid || 0}</td>
+                          <td style={{ padding: '10px 14px', color: p.dues > 0 ? 'var(--danger)' : 'var(--text-muted)', fontWeight: p.dues > 0 ? 600 : 400 }}>{p.dues || 0}</td>
+                          <td style={{ padding: '10px 14px' }}><PaymentBadge method={p.paymentMethod} /></td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.date}</td>
+                          <td style={{ padding: '10px 14px', color: 'var(--text-muted)' }}>{p.time}</td>
                           <td style={{ padding: '10px 14px' }}>
-                            <TokenBadge
-                              token={p.token}
-                              size="sm"
-                              status={p.status}
-                            />
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              fontWeight: 500,
-                            }}
-                          >
-                            {p.name}
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              color: 'var(--text-muted)',
-                            }}
-                          >
-                            {p.age || '-'}
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              color: 'var(--text-muted)',
-                            }}
-                          >
-                            {p.phone || '-'}
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              color: 'var(--text-muted)',
-                              maxWidth: 130,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {p.symptoms}
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              color: 'var(--success)',
-                              fontWeight: 500,
-                            }}
-                          >
-                            {p.paid || 0}
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              color:
-                                p.dues > 0
-                                  ? 'var(--danger)'
-                                  : 'var(--text-muted)',
-                              fontWeight: p.dues > 0 ? 600 : 400,
-                            }}
-                          >
-                            {p.dues || 0}
-                          </td>
-
-                          <td style={{ padding: '10px 14px' }}>
-                            <PaymentBadge
-                              method={p.paymentMethod}
-                            />
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              color: 'var(--text-muted)',
-                            }}
-                          >
-                            {p.date}
-                          </td>
-
-                          <td
-                            style={{
-                              padding: '10px 14px',
-                              color: 'var(--text-muted)',
-                            }}
-                          >
-                            {p.time}
-                          </td>
-
-                          <td style={{ padding: '10px 14px' }}>
-                            <Badge
-                              color={
-                                p.status === 'called'
-                                  ? 'green'
-                                  : p.status === 'done'
-                                  ? 'gray'
-                                  : 'blue'
-                              }
-                            >
-                              {p.status}
-                            </Badge>
+                            <Badge color={p.status === 'called' ? 'green' : p.status === 'done' ? 'gray' : 'blue'}>{p.status}</Badge>
                           </td>
                         </tr>
                       ))}
@@ -1326,13 +1069,106 @@ export function AllPatients({ patients }) {
   );
 }
 
-/* ── Clinic Settings ──────────────────────────────────────────── */
+// ══════════════════════════════════════════════════════════════════════════════
+// PINCODE FETCH HOOK
+// Uses India Post API — free, no key needed
+// Returns: { state, district, subDistrict, postOffices, loading, error }
+// ══════════════════════════════════════════════════════════════════════════════
+function usePincodeLookup() {
+  const [pincode,      setPincode]      = useState('');
+  const [fetchedData,  setFetchedData]  = useState(null);  // raw API result
+  const [loading,      setLoading]      = useState(false);
+  const [error,        setError]        = useState('');
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    const pin = pincode.replace(/\D/g, '');
+    if (pin.length !== 6) {
+      setFetchedData(null);
+      setError('');
+      return;
+    }
+    // Debounce 600ms so we don't fire on every keystroke
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(async () => {
+      setLoading(true);
+      setError('');
+      setFetchedData(null);
+      try {
+        const res  = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+        const json = await res.json();
+        if (!json || !json[0] || json[0].Status !== 'Success' || !json[0].PostOffice?.length) {
+          setError('Pincode not found. Please check and enter manually.');
+          setLoading(false);
+          return;
+        }
+        setFetchedData(json[0].PostOffice); // array of post offices
+      } catch {
+        setError('Network error. Please fill fields manually.');
+      } finally {
+        setLoading(false);
+      }
+    }, 600);
+    return () => clearTimeout(timerRef.current);
+  }, [pincode]);
+
+  return { pincode, setPincode, fetchedData, loading, error };
+}
+
+/* ── Clinic Settings — with Pincode Auto-Fetch + Complete India Data ── */
 function ClinicSettings({ clinic, onSave }) {
-  const [form,  setForm]  = useState({ name:clinic.name, city:clinic.city||'', phone:clinic.phone||'', owner:clinic.owner });
+  const [form, setForm] = useState({
+    name:        clinic.name        || '',
+    owner:       clinic.owner       || '',
+    phone:       clinic.phone       || '',
+    email:       clinic.email       || '',
+    address:     clinic.address     || '',
+    pincode:     clinic.pincode     || '',
+    state:       clinic.state       || '',
+    district:    clinic.district    || '',
+    subDistrict: clinic.subDistrict || '',
+    city:        clinic.city        || '',
+  });
   const [saved, setSaved] = useState(false);
   const [busy,  setBusy]  = useState(false);
   const [err,   setErr]   = useState('');
+
+  // Pincode lookup
+  const { pincode: lookupPin, setPincode: setLookupPin, fetchedData, loading: pinLoading, error: pinError } = usePincodeLookup();
+
+  // When fetchedData arrives, auto-fill State, District, Sub-district
+  useEffect(() => {
+    if (!fetchedData || !fetchedData.length) return;
+    const first = fetchedData[0];
+    setForm((prev) => ({
+      ...prev,
+      state:       first.State       || prev.state,
+      district:    first.District    || prev.district,
+      subDistrict: first.Block       || prev.subDistrict,
+      city:        first.Division    || prev.city,
+    }));
+  }, [fetchedData]);
+
+  // Keep form.pincode and lookupPin in sync
+  function handlePincodeChange(val) {
+    const clean = val.replace(/\D/g, '').slice(0, 6);
+    setForm((p) => ({ ...p, pincode: clean }));
+    setLookupPin(clean);
+  }
+
   const f = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  // Districts for selected state
+  const districts = form.state ? (INDIA_STATES_DISTRICTS[form.state] || []) : [];
+
+  // Post offices from API for sub-district suggestions
+  const subDistrictOptions = fetchedData
+    ? [...new Set(fetchedData.map((po) => po.Block).filter(Boolean))].sort()
+    : [];
+
+  const postOfficeOptions = fetchedData
+    ? fetchedData.map((po) => po.Name).filter(Boolean).sort()
+    : [];
 
   async function save() {
     setBusy(true); setErr('');
@@ -1344,22 +1180,195 @@ function ClinicSettings({ clinic, onSave }) {
     finally { setBusy(false); }
   }
 
+  const inputStyle = {
+    width: '100%', padding: '9px 12px', borderRadius: 9,
+    border: '1.5px solid #d0dce8', fontSize: 13, fontFamily: 'inherit',
+    outline: 'none', color: '#0a3d62', background: '#fff',
+    boxSizing: 'border-box', transition: 'border-color 0.15s',
+  };
+  const labelStyle = { fontSize: 12, fontWeight: 700, color: '#4a6278', marginBottom: 5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.4 };
+  const fieldWrap  = { display: 'flex', flexDirection: 'column' };
+
   return (
-    <div style={{ maxWidth:520 }}>
-      <SectionHeader title="Clinic Settings" />
-      <Card>
-        <div style={{ display:'grid', gap:14 }}>
-          <Input label="Clinic Name" value={form.name}  onChange={(e) => f('name',  e.target.value)} />
-          <Input label="Owner Name"  value={form.owner} onChange={(e) => f('owner', e.target.value)} />
-          <Input label="Phone"       value={form.phone} onChange={(e) => f('phone', e.target.value)} />
-          <Input label="City"        value={form.city}  onChange={(e) => f('city',  e.target.value)} />
-          {saved && <Alert type="success">✓ Settings saved successfully!</Alert>}
-          {err   && <Alert type="error">{err}</Alert>}
-          <Btn onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save Changes'}</Btn>
+    <div style={{ maxWidth: 680 }}>
+      <SectionHeader title="Clinic Settings" subtitle="Manage your clinic information" />
+
+      {/* ── Basic Info ── */}
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, paddingBottom: 10, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          🏥 Basic Information
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={fieldWrap}>
+            <label style={labelStyle}>Clinic Name *</label>
+            <input style={inputStyle} value={form.name} onChange={(e) => f('name', e.target.value)} placeholder="e.g. City Care Clinic" />
+          </div>
+          <div style={fieldWrap}>
+            <label style={labelStyle}>Owner / Doctor Name *</label>
+            <input style={inputStyle} value={form.owner} onChange={(e) => f('owner', e.target.value)} placeholder="e.g. Dr. Ramesh Kumar" />
+          </div>
+          <div style={fieldWrap}>
+            <label style={labelStyle}>Phone</label>
+            <input style={inputStyle} value={form.phone} onChange={(e) => f('phone', e.target.value)} placeholder="e.g. 9876543210" />
+          </div>
+          <div style={fieldWrap}>
+            <label style={labelStyle}>Email</label>
+            <input style={inputStyle} type="email" value={form.email} onChange={(e) => f('email', e.target.value)} placeholder="clinic@example.com" />
+          </div>
+          <div style={{ ...fieldWrap, gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Street Address</label>
+            <input style={inputStyle} value={form.address} onChange={(e) => f('address', e.target.value)} placeholder="e.g. 12, Main Road, Near Bus Stand" />
+          </div>
         </div>
       </Card>
 
-      <div style={{ marginTop:24 }}>
+      {/* ── Location with Pincode Auto-fetch ── */}
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4, paddingBottom: 10, borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+          📍 Location Details
+        </div>
+        <div style={{ fontSize: 12, color: '#8fa8bc', marginBottom: 16 }}>
+          Enter your 6-digit pincode and State, District, Sub-district will fill automatically ✨
+        </div>
+
+        {/* Pincode row */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Pincode</label>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ position: 'relative', width: 160 }}>
+              <input
+                style={{ ...inputStyle, width: '100%', paddingRight: 36, fontWeight: 700, letterSpacing: 2, fontSize: 15,
+                  borderColor: pinError ? '#e74c3c' : fetchedData ? '#00b894' : '#d0dce8' }}
+                value={form.pincode}
+                onChange={(e) => handlePincodeChange(e.target.value)}
+                placeholder="e.g. 110001"
+                maxLength={6}
+              />
+              {pinLoading && (
+                <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14 }}>⏳</span>
+              )}
+              {!pinLoading && fetchedData && (
+                <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14 }}>✅</span>
+              )}
+              {!pinLoading && pinError && (
+                <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 14 }}>❌</span>
+              )}
+            </div>
+            {pinLoading && <span style={{ fontSize: 12, color: '#1565a8', fontWeight: 600 }}>🔍 Fetching location data…</span>}
+            {fetchedData && !pinLoading && (
+              <span style={{ fontSize: 12, color: '#00a878', fontWeight: 600 }}>
+                ✅ Found {fetchedData.length} post office{fetchedData.length > 1 ? 's' : ''} — fields filled automatically!
+              </span>
+            )}
+            {pinError && !pinLoading && (
+              <span style={{ fontSize: 12, color: '#e74c3c', fontWeight: 600 }}>{pinError}</span>
+            )}
+          </div>
+        </div>
+
+        {/* State + District */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
+          <div style={fieldWrap}>
+            <label style={labelStyle}>State / UT</label>
+            <select
+              style={{ ...inputStyle, cursor: 'pointer' }}
+              value={form.state}
+              onChange={(e) => { f('state', e.target.value); f('district', ''); f('subDistrict', ''); }}
+            >
+              <option value="">-- Select State --</option>
+              {INDIA_STATE_NAMES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+            {/* Show count of districts */}
+            {form.state && (
+              <span style={{ fontSize: 11, color: '#8fa8bc', marginTop: 4 }}>
+                {(INDIA_STATES_DISTRICTS[form.state] || []).length} districts available
+              </span>
+            )}
+          </div>
+
+          <div style={fieldWrap}>
+            <label style={labelStyle}>District</label>
+            <select
+              style={{ ...inputStyle, cursor: form.state ? 'pointer' : 'not-allowed', opacity: form.state ? 1 : 0.6 }}
+              value={form.district}
+              onChange={(e) => f('district', e.target.value)}
+              disabled={!form.state}
+            >
+              <option value="">-- Select District --</option>
+              {districts.map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </div>
+        </div>
+
+        {/* Sub-district + City */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={fieldWrap}>
+            <label style={labelStyle}>Sub-district / Block / Tehsil</label>
+            {subDistrictOptions.length > 0 ? (
+              <select
+                style={{ ...inputStyle, cursor: 'pointer' }}
+                value={form.subDistrict}
+                onChange={(e) => f('subDistrict', e.target.value)}
+              >
+                <option value="">-- Select Sub-district --</option>
+                {subDistrictOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input style={inputStyle} value={form.subDistrict} onChange={(e) => f('subDistrict', e.target.value)} placeholder="e.g. Connaught Place" />
+            )}
+          </div>
+
+          <div style={fieldWrap}>
+            <label style={labelStyle}>City / Town / Post Office</label>
+            {postOfficeOptions.length > 0 ? (
+              <select
+                style={{ ...inputStyle, cursor: 'pointer' }}
+                value={form.city}
+                onChange={(e) => f('city', e.target.value)}
+              >
+                <option value="">-- Select Post Office --</option>
+                {postOfficeOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            ) : (
+              <input style={inputStyle} value={form.city} onChange={(e) => f('city', e.target.value)} placeholder="e.g. New Delhi" />
+            )}
+          </div>
+        </div>
+
+        {/* Post offices list (when API data available) */}
+        {fetchedData && fetchedData.length > 0 && (
+          <div style={{ marginTop: 14, background: 'rgba(0,184,148,0.05)', border: '1.5px solid rgba(0,184,148,0.2)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#00a878', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              📮 Post Offices in this Pincode
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {fetchedData.map((po) => (
+                <span
+                  key={po.Name}
+                  onClick={() => f('city', po.Name)}
+                  title={`Click to select: ${po.Name}`}
+                  style={{ background: form.city === po.Name ? '#00b894' : '#fff', color: form.city === po.Name ? '#fff' : '#0a3d62', border: `1px solid ${form.city === po.Name ? '#00b894' : '#c5d5e8'}`, borderRadius: 20, padding: '3px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: '.15s' }}
+                >
+                  {po.Name}
+                  {po.BranchType && <span style={{ opacity: 0.6, marginLeft: 4, fontSize: 10 }}>({po.BranchType})</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </Card>
+
+      {/* Save */}
+      <Card>
+        {saved && <Alert type="success" style={{ marginBottom: 14 }}>✓ Settings saved successfully!</Alert>}
+        {err   && <Alert type="error"   style={{ marginBottom: 14 }}>{err}</Alert>}
+        <Btn onClick={save} disabled={busy} full size="lg">
+          {busy ? 'Saving…' : '💾 Save Clinic Settings'}
+        </Btn>
+      </Card>
+
+      {/* Subscription */}
+      <div style={{ marginTop: 24 }}>
         <SectionHeader title="Subscription Plan" />
         <Card>
           {clinic.plan ? (

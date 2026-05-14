@@ -62,7 +62,7 @@ export default function DoctorDashboard() {
     try {
       const [me, pats] = await Promise.all([
         getMe(),
-        getPatients({ date: 'today' }),
+        getPatients({date: getTodayIST()}),
       ]);
       setDocUser(me);
       setPatients(pats);
@@ -79,8 +79,18 @@ export default function DoctorDashboard() {
 
   const todayStr = new Date().toISOString().split('T')[0];
 
-  const myPatients    = patients.filter((p) => p.date === todayStr).sort((a, b) => a.token - b.token);
-  const allMyPatients = patients;
+const myId = docUser?._id;
+
+const myPatients = patients
+  .filter(
+    (p) =>
+      p.date === todayStr &&
+      myId &&
+      String(p.doctorId) === String(myId)
+  )
+  .sort((a, b) => a.token - b.token);
+
+const allMyPatients = patients;
 
   const waiting = myPatients.filter((p) => p.status === 'waiting');
   const called  = myPatients.filter((p) => p.status === 'called');
@@ -90,7 +100,7 @@ export default function DoctorDashboard() {
   const dailyTokenLimit = docUser?.dailyTokenLimit ?? 0;
   const limitReached    = dailyTokenLimit > 0 && myPatients.length >= dailyTokenLimit;
   const greeting        = `${getGreeting()}, Dr. ${session?.user?.name || ''} · ${session?.user?.specialist || ''}`;
-  const myId            = docUser?._id;
+ // const myId            = docUser?._id;
   const followUpCount   = allMyPatients.filter((p) => p.followUpDate).length;
 
   const navItems = [
@@ -627,4 +637,10 @@ function FollowUpsTab({ allMyPatients, onUpdateFollowUp }) {
       )}
     </div>
   );
+}
+function getTodayIST() {
+  const now = new Date();
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  const istDate = new Date(now.getTime() + istOffset);
+  return istDate.toISOString().split('T')[0];
 }
